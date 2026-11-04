@@ -72,6 +72,10 @@ for _ in $(seq 1 20); do
   state=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["State"])' <<<"$q")
   [[ -z "$state" ]] && break
   opt=$(python3 -c 'import json,sys; o=json.load(sys.stdin)["Option"] or {}; print(o.get("Name",""))' <<<"$q")
+  if [[ "$opt" == config_mountpoint ]]; then
+    # Remember every storage area on the device for step 3.
+    python3 -c 'import json,sys; [print(e["Value"]) for e in json.load(sys.stdin)["Option"].get("Examples") or []]' <<<"$q" > "$WORK/mountpoints"
+  fi
   ans=$(answer "$opt")
   [[ "$ans" == "__ask__" ]] && ans=$(ask "$q")
   echo "    $opt → $ans"
@@ -85,8 +89,9 @@ about=$(rc about "$REMOTE:" --json)
 echo "$about"
 pass "Quota: \`$(python3 -c '
 import json, sys
-d = json.load(sys.stdin); used = d.get("used", 0) / 1e9
-print(f"{used:.1f} GB used of {d[\"total\"] / 1e9:.0f} GB" if d.get("total") else f"{used:.1f} GB used, no total reported (unlimited plan?)")
+d = json.load(sys.stdin)
+used, total = d.get("used", 0) / 1e9, (d.get("total") or 0) / 1e9
+print(f"{used:.1f} GB used of {total:.0f} GB" if total else f"{used:.1f} GB used, no total reported (unlimited plan?)")
 ' <<<"$about")\`"
 
 step "3/5 Listing"
@@ -98,6 +103,25 @@ if [[ "$n" == 0 ]]; then
 else
   pass "Listed root: $n entries"
 fi
+
+# Every storage area through the same remote (and token), using an rclone
+# connection string: "remote,mountpoint=Photos:". Counts and sizes only.
+[[ -s "$WORK/mountpoints" ]] || printf 'Archive\nPhotos\nShared\nSync\n' > "$WORK/mountpoints"
+echo "    storage areas:"
+while read -r mp; do
+  [[ -z "$mp" ]] && continue
+  area="$REMOTE,mountpoint=$mp:"
+  if top=$(rc lsjson "$area" 2>"$WORK/err"); then
+    count=$(python3 -c 'import json,sys; print(len(json.load(sys.stdin)))' <<<"$top")
+    size=$(timeout 300 "$RCLONE" --config "$CONF" size "$area" --json 2>/dev/null \
+      | python3 -c 'import json,sys; d=json.load(sys.stdin); c, b = d["count"], d["bytes"] / 1e9; print(f"{c} files, {b:.1f} GB")' 2>/dev/null || echo "size unavailable")
+    echo "      $mp: $count top-level entries, $size"
+    pass "Storage area \`$mp\`: $count top-level entries, $size"
+  else
+    echo "      $mp: error: $(tail -1 "$WORK/err")"
+    fail "Storage area \`$mp\`: $(tail -1 "$WORK/err" | cut -c1-200)"
+  fi
+done < "$WORK/mountpoints"
 
 step "4/5 Upload / download round trip in $SCRATCH"
 head -c 5000000 /dev/urandom > "$WORK/probe.bin"
