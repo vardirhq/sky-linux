@@ -20,7 +20,7 @@ The goal is to prove that rclone can authenticate with a real Telia Sky account,
 - [ ] Root listing and the default device/mountpoint (`Jotta` / `Archive`): where do uploads appear in the Telia Sky apps?
 - [ ] 5 MB and unicode-filename round trip; server-side MD5 matches
 - [ ] Forced token expiry → rclone refreshes it silently and persists the new token
-- [ ] **Single active authentication:** rclone warns that traditional auth allows only one active session. Does signing in here sign out the official Telia Sky apps or other rclone instances?
+- [ ] **Single active authentication:** rclone warns that traditional auth allows only one active session. Telia has no Linux client, but its Windows/macOS desktop client uses the same OAuth client id (`desktop`). Does signing in here sign out that client (for people who also use a Mac or dual-boot), the mobile apps, or other rclone instances?
 - [ ] Refresh-token lifetime when idle (re-run after a week)
 - [ ] Rate limits and behaviour for large uploads (multi-GB, resumable `upload_resume_limit`)
 - [ ] Trash behaviour of `deletefile` and `purge` in the Telia Sky UI

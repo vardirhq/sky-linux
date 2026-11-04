@@ -112,7 +112,7 @@ fi
   echo
   echo "## Notes to verify by hand"
   echo
-  echo "- Does signing in here sign out the official Telia Sky desktop app? (rclone warns that"
+  echo "- Does signing in here sign out Telia's Windows/macOS client or the mobile apps? (rclone warns that"
   echo "  traditional auth allows only a single active authentication.)"
   echo "- How long does the refresh token live without use? Re-run step 5 after a week."
   echo "- Where do uploaded files appear in the Telia Sky web/app UI (device \`Jotta\`, mount \`Archive\`)?"
