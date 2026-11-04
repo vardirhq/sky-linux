@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Sky Linux
+GenericName=Cloud Storage
+GenericName[nb]=Skylagring
+Comment=Browse and back up your Telia Sky / Jottacloud files
+Comment[nb]=Bla gjennom og sikkerhetskopier filene dine i Telia Sky / Jottacloud
+Exec=sky-linux %U
+Icon=io.github.vardirhq.SkyLinux
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=cloud;backup;sync;telia;jottacloud;
+Keywords[nb]=sky;sikkerhetskopi;synkronisering;telia;jottacloud;
+StartupWMClass=sky-linux

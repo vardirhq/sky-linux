@@ -1,0 +1,21 @@
+[Unit]
+Description=Sky Linux background service (cloud backups and transfers)
+Documentation=https://github.com/vardirhq/sky-linux
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sky-daemon run
+Restart=on-failure
+RestartSec=5
+# Hardening: the daemon only needs the user's files, its own state and the network.
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+PrivateTmp=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=graphical-session.target

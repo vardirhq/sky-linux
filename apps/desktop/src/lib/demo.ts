@@ -1,0 +1,345 @@
+// Demo backend used when the UI runs outside Tauri (browser dev server,
+// screenshots, UI tests). It mimics sky-daemon's IPC methods with in-memory
+// data so designers and contributors can work on the UI without an account.
+
+import type { Transport } from "./api";
+import { SkyError } from "./api";
+import type {
+  Account,
+  BackupJob,
+  CloudEntry,
+  HistoryEntry,
+  LiveStats,
+  NewBackupJob,
+  SkyEvent,
+  Transfer,
+} from "./types";
+
+const GB = 1e9;
+const TB = 1e12;
+const MB = 1e6;
+const now = () => new Date().toISOString();
+const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+const uid = () =>
+  globalThis.crypto?.randomUUID?.() ?? Math.random().toString(16).slice(2) + Date.now().toString(16);
+
+const account: Account = {
+  id: "00000000-0000-4000-8000-000000000001",
+  provider: "telia_sky_no",
+  remote: "sky-telia-no",
+  displayName: "Ola Nordmann",
+  email: "ola@example.no",
+  connectedAt: ago(60 * 24 * 30),
+};
+
+function entry(path: string, kind: "file" | "folder", size: number | null, modified: string, mimeType: string | null = null): CloudEntry {
+  return { name: path.split("/").pop()!, path, kind, size, modified, mimeType };
+}
+
+const tree: Record<string, CloudEntry[]> = {
+  "": [
+    entry("Photos", "folder", 1.4 * TB, "2025-01-22T20:18:00Z"),
+    entry("Documents", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
+    entry("Family Backup", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
+    entry("Work", "folder", 310 * GB, "2025-01-22T17:40:00Z"),
+    entry("Devices", "folder", 186 * GB, "2025-01-19T13:12:00Z"),
+    entry("Holiday plan.pdf", "file", 3.7 * MB, "2025-01-20T10:03:00Z", "application/pdf"),
+    entry("Norway.jpg", "file", 8.9 * MB, "2025-01-21T18:55:00Z", "image/jpeg"),
+    entry("Budget 2025.xlsx", "file", 1.2 * MB, "2025-01-19T09:36:00Z",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+  ],
+  Photos: [
+    entry("Photos/2024", "folder", 820 * GB, "2024-12-31T12:00:00Z"),
+    entry("Photos/2025", "folder", 580 * GB, "2025-01-22T20:18:00Z"),
+    entry("Photos/IMG_4827.jpg", "file", 28.4 * MB, ago(2), "image/jpeg"),
+  ],
+  Documents: [
+    entry("Documents/Project brief.pdf", "file", 12.1 * MB, ago(7), "application/pdf"),
+    entry("Documents/Tax 2024.pdf", "file", 2.2 * MB, "2025-01-10T11:00:00Z", "application/pdf"),
+    entry("Documents/Notes.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
+  ],
+};
+
+const backups: BackupJob[] = [
+  { name: "Family Backup", local: "/home/ola/Family", remote: "Family Backup" },
+  { name: "Pictures", local: "/home/ola/Pictures", remote: "Photos" },
+  { name: "Documents", local: "/home/ola/Documents", remote: "Documents" },
+].map((b, i) => ({
+  id: `00000000-0000-4000-8000-00000000010${i}`,
+  accountId: account.id,
+  name: b.name,
+  localPath: b.local,
+  remotePath: b.remote,
+  schedule: { kind: "onChange", debounceSeconds: 30, fallbackHours: 24 },
+  enabled: true,
+  exclude: ["*.tmp", ".cache/**"],
+  lastRun: ago(60 + i * 5),
+  lastSuccess: ago(60 + i * 5),
+  lastError: null,
+  createdAt: ago(60 * 24 * 30),
+}));
+
+function transfer(p: Partial<Transfer>): Transfer {
+  return {
+    id: uid(),
+    accountId: account.id,
+    direction: "upload",
+    source: "",
+    destination: "",
+    state: "completed",
+    bytesTotal: null,
+    bytesDone: 0,
+    speed: null,
+    etaSeconds: null,
+    error: null,
+    rcloneJob: null,
+    backupJob: null,
+    startedAt: now(),
+    finishedAt: now(),
+    ...p,
+  };
+}
+
+const transfers: Transfer[] = [
+  transfer({
+    direction: "upload",
+    source: "/home/ola/Pictures",
+    destination: "Photos",
+    state: "running",
+    bytesTotal: 15 * GB,
+    bytesDone: 10.8 * GB,
+    speed: 12.4 * MB,
+    etaSeconds: 340,
+    backupJob: backups[1].id,
+    startedAt: ago(14),
+    finishedAt: null,
+  }),
+  transfer({ source: "/home/ola/Pictures/IMG_4827.jpg", destination: "Photos/IMG_4827.jpg", bytesTotal: 28.4 * MB, bytesDone: 28.4 * MB, startedAt: ago(2), finishedAt: ago(2) }),
+  transfer({ direction: "download", source: "Documents/Project brief.pdf", destination: "/home/ola/Downloads/Project brief.pdf", bytesTotal: 12.1 * MB, bytesDone: 12.1 * MB, startedAt: ago(7), finishedAt: ago(7) }),
+  transfer({ source: "/home/ola/Work/slides.odp", destination: "Work/slides.odp", bytesTotal: 540 * MB, bytesDone: 540 * MB, startedAt: ago(40), finishedAt: ago(38) }),
+  transfer({ source: "/home/ola/Work/video.mp4", destination: "Work/video.mp4", bytesTotal: 520 * MB, bytesDone: 520 * MB, startedAt: ago(55), finishedAt: ago(50) }),
+  transfer({ direction: "download", source: "Photos/2024/summer.zip", destination: "/home/ola/Downloads/summer.zip", bytesTotal: 568 * MB, bytesDone: 568 * MB, startedAt: ago(80), finishedAt: ago(78) }),
+];
+
+const history: HistoryEntry[] = [
+  { id: 4, at: ago(2), event: { type: "transferUpdated", data: transfers[1] } },
+  { id: 3, at: ago(7), event: { type: "transferUpdated", data: transfers[2] } },
+  { id: 2, at: ago(60), event: { type: "backupFinished", data: backups[0] } },
+  { id: 1, at: ago(60 * 24 * 30), event: { type: "accountConnected", data: account } },
+];
+
+export class DemoTransport implements Transport {
+  private listeners = new Set<(e: SkyEvent) => void>();
+  private connected = true;
+  private settings: Record<string, unknown> = { onboardingComplete: true };
+
+  constructor() {
+    if (typeof window !== "undefined") {
+      const q = new URLSearchParams(window.location.search);
+      if (q.has("onboarding")) {
+        this.connected = false;
+        this.settings.onboardingComplete = false;
+      }
+    }
+    setInterval(() => this.tick(), 1000);
+  }
+
+  private emit(e: SkyEvent) {
+    this.listeners.forEach((l) => l(e));
+  }
+
+  private tick() {
+    let speed = 0;
+    for (const t of transfers) {
+      if (t.state !== "running" || !t.bytesTotal) continue;
+      const s = (t.speed ?? 8 * MB) * (0.85 + Math.random() * 0.3);
+      t.speed = s;
+      t.bytesDone = Math.min(t.bytesTotal, t.bytesDone + s);
+      t.etaSeconds = Math.round((t.bytesTotal - t.bytesDone) / s);
+      speed += s;
+      if (t.bytesDone >= t.bytesTotal) {
+        t.state = "completed";
+        t.finishedAt = now();
+        t.speed = null;
+      }
+      this.emit({ type: "transferUpdated", data: { ...t } });
+    }
+    const running = transfers.filter((t) => t.state === "running");
+    const stats: LiveStats = {
+      bytes: running.reduce((a, t) => a + t.bytesDone, 0),
+      totalBytes: running.reduce((a, t) => a + (t.bytesTotal ?? 0), 0),
+      speed,
+      etaSeconds: running[0]?.etaSeconds ?? null,
+      transfers: 0,
+      totalTransfers: 1248,
+      errors: 0,
+    };
+    this.emit({ type: "stats", data: stats });
+  }
+
+  onEvent(cb: (e: SkyEvent) => void) {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  }
+
+  async request<T>(method: string, params: any = {}): Promise<T> {
+    await new Promise((r) => setTimeout(r, 60));
+    return this.handle(method, params) as T;
+  }
+
+  private handle(method: string, p: any): unknown {
+    switch (method) {
+      case "daemon.status":
+        return {
+          version: "0.1.0-demo",
+          rcloneVersion: "v1.75.2",
+          rcloneRunning: true,
+          accounts: this.connected ? [account] : [],
+          activeTransfers: transfers.filter((t) => t.state === "running").length,
+          backupJobs: backups.length,
+        };
+      case "accounts.providers":
+        return [
+          { id: "telia_sky_no", name: "Telia Sky", supported: true },
+          { id: "jottacloud", name: "Jottacloud", supported: false },
+          { id: "telia_cloud_se", name: "Telia Cloud", supported: false },
+          { id: "elkjop_no", name: "Elkjøp Cloud", supported: false },
+        ];
+      case "accounts.list":
+        return this.connected ? [account] : [];
+      case "accounts.connect":
+        return new Promise((resolve) =>
+          setTimeout(() => {
+            this.connected = true;
+            this.emit({ type: "accountConnected", data: account });
+            resolve(account);
+          }, 1500),
+        );
+      case "accounts.disconnect":
+        this.connected = false;
+        this.emit({ type: "accountRemoved", data: { id: account.id } });
+        return null;
+      case "files.list":
+        return tree[(p.path ?? "").replace(/^\/+|\/+$/g, "")] ?? [];
+      case "files.search": {
+        const q = String(p.query ?? "").toLowerCase();
+        return Object.values(tree).flat().filter((e) => e.name.toLowerCase().includes(q));
+      }
+      case "files.usage":
+        return { used: 2.8 * TB, total: 5 * TB, free: 2.2 * TB, trashed: 12 * GB };
+      case "files.mkdir": {
+        const parent = p.path.includes("/") ? p.path.slice(0, p.path.lastIndexOf("/")) : "";
+        (tree[parent] ??= []).push(entry(p.path, "folder", null, now()));
+        return null;
+      }
+      case "files.move": {
+        for (const list of Object.values(tree)) {
+          const e = list.find((x) => x.path === p.from);
+          if (e) {
+            e.path = p.to;
+            e.name = p.to.split("/").pop();
+          }
+        }
+        return null;
+      }
+      case "files.delete":
+        for (const k of Object.keys(tree)) tree[k] = tree[k].filter((e) => e.path !== p.path);
+        return null;
+      case "transfers.upload":
+      case "transfers.download": {
+        const up = method === "transfers.upload";
+        const items: string[] = up ? p.localPaths : p.entries.map((e: CloudEntry) => e.path);
+        const created = items.map((src) => {
+          const name = src.split("/").pop()!;
+          const t = transfer({
+            direction: up ? "upload" : "download",
+            source: src,
+            destination: up ? `${p.remoteDir ? p.remoteDir + "/" : ""}${name}` : `${p.localDir}/${name}`,
+            state: "running",
+            bytesTotal: (20 + Math.random() * 200) * MB,
+            bytesDone: 0,
+            speed: 9 * MB,
+            finishedAt: null,
+          });
+          transfers.unshift(t);
+          return t;
+        });
+        return created;
+      }
+      case "transfers.list":
+        return transfers.slice(0, p.limit ?? 100);
+      case "transfers.cancel": {
+        const t = transfers.find((x) => x.id === p.id);
+        if (t) {
+          t.state = "cancelled";
+          t.finishedAt = now();
+          this.emit({ type: "transferUpdated", data: { ...t } });
+        }
+        return null;
+      }
+      case "backups.list":
+        return backups;
+      case "backups.create": {
+        const n = p as NewBackupJob;
+        if (n.localPath === "/" || n.localPath === "/etc")
+          throw new SkyError({
+            code: "safety",
+            title: "Stopped to protect your files",
+            message: `${n.localPath} is a system folder. Choose a folder with your own files, such as Documents or Pictures.`,
+            action: "none",
+            technical: "",
+            rule: "system_folder",
+            params: { path: n.localPath },
+          });
+        const job: BackupJob = {
+          id: uid(),
+          accountId: n.accountId,
+          name: n.name || n.localPath.split("/").filter(Boolean).pop() || "Backup",
+          localPath: n.localPath,
+          remotePath: n.remotePath,
+          schedule: n.schedule ?? { kind: "onChange", debounceSeconds: 30, fallbackHours: 24 },
+          enabled: true,
+          exclude: n.exclude ?? [],
+          lastRun: null,
+          lastSuccess: null,
+          lastError: null,
+          createdAt: now(),
+        };
+        backups.push(job);
+        this.emit({ type: "backupJobChanged", data: job });
+        return job;
+      }
+      case "backups.setEnabled": {
+        const j = backups.find((b) => b.id === p.id)!;
+        j.enabled = p.enabled;
+        return j;
+      }
+      case "backups.delete": {
+        const i = backups.findIndex((b) => b.id === p.id);
+        if (i >= 0) backups.splice(i, 1);
+        return null;
+      }
+      case "backups.runNow": {
+        const j = backups.find((b) => b.id === p.id)!;
+        j.lastRun = j.lastSuccess = now();
+        this.emit({ type: "backupFinished", data: j });
+        return j;
+      }
+      case "history.list":
+        return history;
+      case "settings.get":
+        return this.settings[p.key] ?? null;
+      case "settings.set":
+        this.settings[p.key] = p.value;
+        return null;
+      default:
+        throw new SkyError({
+          code: "invalid",
+          title: "Unknown request",
+          message: method,
+          action: "none",
+          technical: method,
+        });
+    }
+  }
+}

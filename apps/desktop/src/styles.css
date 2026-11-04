@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+/* Scandinavian-inspired light theme with subtle blue accents.
+   Colors are tokens so a dark theme only redefines variables. */
+@theme {
+  --font-sans: "Inter", "Cantarell", "Noto Sans", ui-sans-serif, system-ui, sans-serif;
+
+  --color-bg: #f4f7fb;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f6f8fb;
+  --color-border: #e3e8ef;
+  --color-fg: #1b2330;
+  --color-fg-muted: #5b6575;
+  --color-fg-subtle: #8a93a3;
+
+  --color-accent: #1f6feb;
+  --color-accent-hover: #1a5fd0;
+  --color-accent-soft: #e6efff;
+  --color-accent-fg: #ffffff;
+
+  --color-success: #1f9d55;
+  --color-success-soft: #e5f6ec;
+  --color-warning: #b7791f;
+  --color-warning-soft: #fdf3e1;
+  --color-danger: #d1383d;
+  --color-danger-soft: #fdecec;
+
+  --radius-card: 14px;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
+}
+
+@layer base {
+  :root[data-theme="dark"] {
+    --color-bg: #0f141b;
+    --color-surface: #161c25;
+    --color-surface-muted: #1b2230;
+    --color-border: #263042;
+    --color-fg: #e7ecf3;
+    --color-fg-muted: #a3adbd;
+    --color-fg-subtle: #758097;
+    --color-accent: #4c8dff;
+    --color-accent-hover: #6aa0ff;
+    --color-accent-soft: #1b2a45;
+    --color-success-soft: #12301f;
+    --color-warning-soft: #33280f;
+    --color-danger-soft: #3a1618;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --color-bg: #0f141b;
+      --color-surface: #161c25;
+      --color-surface-muted: #1b2230;
+      --color-border: #263042;
+      --color-fg: #e7ecf3;
+      --color-fg-muted: #a3adbd;
+      --color-fg-subtle: #758097;
+      --color-accent: #4c8dff;
+      --color-accent-hover: #6aa0ff;
+      --color-accent-soft: #1b2a45;
+      --color-success-soft: #12301f;
+      --color-warning-soft: #33280f;
+      --color-danger-soft: #3a1618;
+    }
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-accent;
+  }
+  ::selection {
+    @apply bg-accent-soft;
+  }
+}

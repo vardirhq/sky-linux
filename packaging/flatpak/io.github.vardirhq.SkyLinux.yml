@@ -1,0 +1,46 @@
+# Flatpak manifest — EXPERIMENTAL. See docs/PACKAGING.md for the open
+# questions about background services inside the sandbox.
+app-id: io.github.vardirhq.SkyLinux
+runtime: org.gnome.Platform
+runtime-version: "48"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: sky-linux
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # inotify-based change detection needs real paths, not portal handles.
+  - --filesystem=home
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: rclone
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 rclone /app/bin/rclone
+    sources:
+      - type: archive
+        url: https://downloads.rclone.org/v1.75.2/rclone-v1.75.2-linux-amd64.zip
+        sha256: REPLACE_WITH_RELEASE_SHA256
+        only-arches: [x86_64]
+  - name: sky-linux
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+    build-commands:
+      - cd apps/desktop && npm ci --offline && npm run build
+      - cargo build --release --offline -p sky-daemon -p sky-linux
+      - install -Dm755 target/release/sky-linux /app/bin/sky-linux
+      - install -Dm755 target/release/sky-daemon /app/bin/sky-daemon
+      - install -Dm644 packaging/sky-linux.desktop /app/share/applications/io.github.vardirhq.SkyLinux.desktop
+      - install -Dm644 packaging/io.github.vardirhq.SkyLinux.metainfo.xml /app/share/metainfo/io.github.vardirhq.SkyLinux.metainfo.xml
+      - install -Dm644 apps/desktop/src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.vardirhq.SkyLinux.png
+    sources:
+      - type: dir
+        path: ../..

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.vardirhq.SkyLinux</id>
+  <name>Sky Linux</name>
+  <summary>Telia Sky and Jottacloud client for Linux</summary>
+  <summary xml:lang="nb">Telia Sky- og Jottacloud-klient for Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <description>
+    <p>Browse your cloud files, back up folders automatically and keep track of transfers.
+    Backups never delete files in the cloud. Sky Linux is independent open-source software and
+    is not affiliated with Telia or Jottacloud.</p>
+    <p xml:lang="nb">Bla gjennom filene dine i skyen, sikkerhetskopier mapper automatisk og hold oversikt over
+    overføringer. Sikkerhetskopier sletter aldri filer i skyen. Sky Linux er uavhengig programvare med åpen
+    kildekode og er ikke tilknyttet Telia eller Jottacloud.</p>
+  </description>
+  <languages>
+    <lang>nb</lang>
+    <lang>en</lang>
+  </languages>
+  <launchable type="desktop-id">sky-linux.desktop</launchable>
+  <url type="homepage">https://github.com/vardirhq/sky-linux</url>
+  <content_rating type="oars-1.1"/>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/vardirhq/sky-linux/main/docs/screenshots/dashboard.png</image>
+    </screenshot>
+  </screenshots>
+</component>
