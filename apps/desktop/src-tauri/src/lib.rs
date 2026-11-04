@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::Value;
-use sky_core::ipc::IpcClient;
+use sky_core::ipc::{IpcClient, IpcResult};
 use sky_core::paths::AppPaths;
 use sky_core::UserError;
 use tauri::menu::{Menu, MenuItem};
@@ -59,7 +59,7 @@ fn daemon_binary() -> PathBuf {
 
 /// Connect to the daemon, starting it (via systemd if installed, otherwise
 /// directly) when it isn't running.
-async fn connect(app: &AppHandle) -> Result<IpcClient, UserError> {
+async fn connect(app: &AppHandle) -> Result<IpcClient, Box<UserError>> {
     let sock = AppPaths::from_env().daemon_socket();
     if let Ok(c) = IpcClient::connect(&sock).await {
         return Ok(c);
@@ -82,10 +82,12 @@ async fn connect(app: &AppHandle) -> Result<IpcClient, UserError> {
         }
     }
     let _ = app;
-    Err(sky_core::CoreError::Ipc("the Sky background service did not start".into()).to_user())
+    Err(Box::new(
+        sky_core::CoreError::Ipc("the Sky background service did not start".into()).to_user(),
+    ))
 }
 
-async fn client(app: &AppHandle, state: &Daemon) -> Result<IpcClient, UserError> {
+async fn client(app: &AppHandle, state: &Daemon) -> Result<IpcClient, Box<UserError>> {
     let mut guard = state.0.lock().await;
     if let Some(c) = guard.as_ref() {
         return Ok(c.clone());
@@ -108,7 +110,7 @@ async fn daemon_request(
     state: State<'_, Daemon>,
     method: String,
     params: Option<Value>,
-) -> Result<Value, UserError> {
+) -> IpcResult {
     let c = client(&app, &state).await?;
     match c
         .request_raw(&method, params.clone().unwrap_or(Value::Null))

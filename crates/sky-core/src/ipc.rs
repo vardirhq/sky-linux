@@ -377,9 +377,11 @@ async fn handle(stream: UnixStream, core: Arc<SkyCore>) -> Result<()> {
 
 // ---- client -----------------------------------------------------------------
 
-type Pending = Arc<
-    Mutex<std::collections::HashMap<u64, oneshot::Sender<std::result::Result<Value, UserError>>>>,
->;
+/// Result of a daemon request. The error is boxed: `UserError` is large and
+/// the common path is success.
+pub type IpcResult = std::result::Result<Value, Box<UserError>>;
+
+type Pending = Arc<Mutex<std::collections::HashMap<u64, oneshot::Sender<IpcResult>>>>;
 
 /// Client used by the desktop app (and tests) to talk to the daemon.
 #[derive(Clone)]
@@ -421,7 +423,7 @@ impl IpcClient {
                     Ok(ServerMessage::Response { id, result, error }) => {
                         if let Some(tx) = p.lock().await.remove(&id) {
                             let _ = tx.send(match error {
-                                Some(e) => Err(e),
+                                Some(e) => Err(Box::new(e)),
                                 None => Ok(result.unwrap_or(Value::Null)),
                             });
                         }
@@ -445,28 +447,26 @@ impl IpcClient {
     }
 
     /// Send a request; errors come back already translated for users.
-    pub async fn request(&self, req: &Request) -> std::result::Result<Value, UserError> {
+    pub async fn request(&self, req: &Request) -> IpcResult {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
-        let mut msg = serde_json::to_value(req).map_err(|e| CoreError::from(e).to_user())?;
+        let mut msg =
+            serde_json::to_value(req).map_err(|e| Box::new(CoreError::from(e).to_user()))?;
         msg["id"] = Value::from(id);
         let (tx, rx) = oneshot::channel();
         self.pending.lock().await.insert(id, tx);
-        let lost = || CoreError::Ipc("connection to the daemon was lost".into()).to_user();
+        let lost =
+            || Box::new(CoreError::Ipc("connection to the daemon was lost".into()).to_user());
         self.out.send(msg.to_string()).await.map_err(|_| lost())?;
         rx.await.map_err(|_| lost())?
     }
 
     /// Send a raw `{method, params}` request (used by the Tauri bridge).
-    pub async fn request_raw(
-        &self,
-        method: &str,
-        params: Value,
-    ) -> std::result::Result<Value, UserError> {
+    pub async fn request_raw(&self, method: &str, params: Value) -> IpcResult {
         let req: Request =
             serde_json::from_value(serde_json::json!({ "method": method, "params": params }))
                 .or_else(|_| serde_json::from_value(serde_json::json!({ "method": method })))
                 .map_err(|e| {
-                    CoreError::Invalid(format!("unknown request {method}: {e}")).to_user()
+                    Box::new(CoreError::Invalid(format!("unknown request {method}: {e}")).to_user())
                 })?;
         self.request(&req).await
     }
