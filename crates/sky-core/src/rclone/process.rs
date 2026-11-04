@@ -329,7 +329,7 @@ mod tests {
         std::fs::create_dir_all(&lib).unwrap();
         std::fs::write(bin.join("rclone"), "distro").unwrap();
         std::fs::write(lib.join("rclone"), "bundled").unwrap();
-        let found = rclone_candidates(Some(&bin), &[bin.clone()])
+        let found = rclone_candidates(Some(&bin), std::slice::from_ref(&bin))
             .into_iter()
             .find(|p| p.is_file())
             .unwrap();
