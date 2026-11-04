@@ -1,0 +1,38 @@
+# Maintainer: Sky Linux contributors
+pkgname=sky-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Telia Sky and Jottacloud desktop client for Linux"
+arch=('x86_64' 'aarch64')
+url="https://github.com/vardirhq/sky-linux"
+license=('GPL-3.0-or-later')
+depends=('webkit2gtk-4.1' 'libayatana-appindicator' 'rclone>=1.66')
+makedepends=('cargo' 'nodejs' 'npm')
+optdepends=('gnome-keyring: encrypt the stored sign-in token'
+            'kwallet: encrypt the stored sign-in token')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver/apps/desktop"
+  npm ci
+  npm run build
+  cd ../..
+  cargo build --release --locked -p sky-daemon
+  cargo build --release --locked -p sky-linux --features tauri/custom-protocol
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  cargo test --release --locked -p sky-core
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 target/release/sky-linux "$pkgdir/usr/bin/sky-linux"
+  install -Dm755 target/release/sky-daemon "$pkgdir/usr/bin/sky-daemon"
+  install -Dm644 packaging/systemd/sky-daemon.service "$pkgdir/usr/lib/systemd/user/sky-daemon.service"
+  install -Dm644 packaging/sky-linux.desktop "$pkgdir/usr/share/applications/sky-linux.desktop"
+  install -Dm644 apps/desktop/src-tauri/icons/128x128@2x.png \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/io.github.vardirhq.SkyLinux.png"
+}

@@ -1,0 +1,71 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sky Linux",
+  "identifier": "io.github.vardirhq.SkyLinux",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Sky Linux",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "dragDropEnabled": true,
+        "decorations": false,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data: asset:; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage"
+    ],
+    "category": "Utility",
+    "shortDescription": "Telia Sky and Jottacloud client for Linux",
+    "longDescription": "Browse your cloud files, back up folders automatically and manage transfers. Open source, not affiliated with Telia or Jottacloud.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.png"
+    ],
+    "externalBin": [
+      "binaries/sky-daemon"
+    ],
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libayatana-appindicator3-1"
+        ],
+        "files": {
+          "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
+          "/usr/lib/sky-linux/rclone": "binaries/rclone"
+        }
+      },
+      "rpm": {
+        "depends": [
+          "webkit2gtk4.1",
+          "libayatana-appindicator-gtk3"
+        ],
+        "files": {
+          "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
+          "/usr/lib/sky-linux/rclone": "binaries/rclone"
+        }
+      }
+    }
+  }
+}

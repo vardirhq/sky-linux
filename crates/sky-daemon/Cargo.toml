@@ -1,0 +1,20 @@
+[package]
+name = "sky-daemon"
+description = "Sky Linux background service: keeps backups and transfers running when the window is closed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "sky-daemon"
+path = "src/main.rs"
+
+[dependencies]
+sky-core.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
