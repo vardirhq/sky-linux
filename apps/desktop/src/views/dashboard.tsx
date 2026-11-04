@@ -111,10 +111,16 @@ export function Dashboard() {
               <span className="font-semibold text-fg">{formatBytes(usage?.used)}</span>
               {usage?.total ? t("dashboard.ofUsed", { total: formatBytes(usage.total) }) : t("dashboard.used")}
             </p>
-            <div className="flex items-center gap-3">
-              <Progress value={percent(usage?.used ?? 0, usage?.total)} label={t("dashboard.storageUsed")} />
-              <span className="text-sm tabular-nums text-fg-muted">{percent(usage?.used ?? 0, usage?.total)}%</span>
-            </div>
+            {usage?.total ? (
+              <div className="flex items-center gap-3">
+                <Progress value={percent(usage.used, usage.total)} label={t("dashboard.storageUsed")} />
+                <span className="text-sm tabular-nums text-fg-muted">{percent(usage.used, usage.total)}%</span>
+              </div>
+            ) : (
+              // Telia Sky reports only space used (seen on a real account),
+              // e.g. for plans with unlimited storage.
+              usage && <p className="text-xs text-fg-subtle">{t("dashboard.noLimit")}</p>
+            )}
           </CardContent>
         </Card>
         <Card>

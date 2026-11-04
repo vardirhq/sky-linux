@@ -17,10 +17,13 @@ The goal is to prove that rclone can authenticate with a real Telia Sky account,
 
 ## Needs a real Telia Sky account (run `scripts/feasibility.sh`)
 
-- [ ] Browser sign-in completes and `about` returns the quota
-- [ ] Root listing and the default device/mountpoint (`Jotta` / `Archive`): where do uploads appear in the Telia Sky apps?
-- [ ] 5 MB and unicode-filename round trip; server-side MD5 matches
-- [ ] Forced token expiry → rclone refreshes it silently and persists the new token
+First run on a real Telia Sky account (2026-11-04, rclone v1.75.2, CachyOS):
+
+- [x] Browser sign-in via Telia's own sign-in page completes with no terminal input (`telia_no`, traditional auth).
+- [x] `about` works, but returns **only `used`** (12.9 GB) and no `total`, possibly because the plan is unlimited. The UI shows space used without a bar when there's no total.
+- [ ] **The default device/mountpoint (`Jotta` / `Archive`) was empty although the account holds 12.9 GB.** The files live in another device or mountpoint. The script now sets `config_non_standard=true` and lists the account's devices and mountpoints to find them. Sky Core's sign-in still takes the default and must be changed once we know where Telia Sky keeps user files (and which area the Telia apps show as "Mine filer").
+- [x] 5 MB and unicode-filename (æøå) round trip, byte-identical, 1.4 s; server-side MD5 matches; purge goes to the trash.
+- [ ] Forced token expiry: not tested yet. The script's config rewrite lowercased `configVersion`, so rclone rejected the config as "outdated" (a script bug, now fixed).
 - [ ] **Single active authentication:** rclone warns that traditional auth allows only one active session. Telia has no Linux client, but its Windows/macOS desktop client uses the same OAuth client id (`desktop`). Does signing in here sign out that client (for people who also use a Mac or dual-boot), the mobile apps, or other rclone instances?
 - [ ] Refresh-token lifetime when idle (re-run after a week)
 - [ ] Rate limits and behaviour for large uploads (multi-GB, resumable `upload_resume_limit`)

@@ -73,6 +73,7 @@ export const en = {
     ofUsed: " of {total} used",
     used: " used",
     storageUsed: "Storage used",
+    noLimit: "Your plan reports no storage limit",
     syncStatus: "Sync status",
     syncingBadge: "Syncing",
     upToDateBadge: "Up to date",

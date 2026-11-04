@@ -73,6 +73,7 @@ export const nb: Dict = {
     ofUsed: " av {total} brukt",
     used: " brukt",
     storageUsed: "Brukt lagringsplass",
+    noLimit: "Abonnementet ditt oppgir ingen lagringsgrense",
     syncStatus: "Synkronisering",
     syncingBadge: "Synkroniserer",
     upToDateBadge: "Oppdatert",
