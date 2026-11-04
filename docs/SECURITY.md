@@ -23,7 +23,14 @@
 - Downloads never overwrite existing local files.
 - Signing out or removing a backup job never deletes local or cloud files. Uninstalling the package leaves user data alone.
 - Remote deletes are single files only and go to the provider's trash. Folder deletion waits for a trash-aware confirmation flow.
-- Two-way sync stays off until phase 4's safeguards (`--max-delete`, check-access files, conflict copies, dry-run previews) are in place and tested.
+- Two-way sync:
+  - the first sync merges both sides and deletes nothing;
+  - local files that sync deletes or overwrites go to a recovery folder (`~/.local/share/sky-linux/sync/<id>/recovery`), kept even after the pair is removed; cloud deletions go to the provider's trash;
+  - a `.sky-linux-sync` marker on both sides stops sync if the folder disappeared or was swapped (an unmounted drive never empties the cloud);
+  - a run deleting more than 50 % of files stops for review; approving deletions is refused while the folder itself is missing;
+  - conflicting edits keep both versions;
+  - syncing the whole home folder, system folders, Sky Linux's own data or overlapping folders is refused.
+  Each rule has an end-to-end test in `crates/sky-core/tests/sync_integration.rs`.
 
 ## Reporting
 

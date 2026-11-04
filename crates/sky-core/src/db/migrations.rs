@@ -81,6 +81,28 @@ const MIGRATIONS: &[&str] = &[
         state       TEXT
     );
     "#,
+    // 2: two-way sync. The reserved table was never written to, so it is
+    // replaced rather than altered.
+    r#"
+    DROP TABLE sync_pairs;
+    CREATE TABLE sync_pairs (
+        id                 BLOB PRIMARY KEY,
+        account_id         BLOB NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+        name               TEXT NOT NULL,
+        local_path         TEXT NOT NULL UNIQUE,
+        remote_path        TEXT NOT NULL,
+        enabled            INTEGER NOT NULL DEFAULT 1,
+        max_delete_percent INTEGER NOT NULL DEFAULT 50,
+        poll_minutes       INTEGER NOT NULL DEFAULT 5,
+        state              TEXT NOT NULL,
+        last_sync          TEXT,
+        last_summary       TEXT,
+        last_error         TEXT,
+        recovery_path      TEXT NOT NULL,
+        created_at         TEXT NOT NULL,
+        UNIQUE(account_id, remote_path)
+    );
+    "#,
 ];
 
 #[allow(dead_code)] // used by tests and diagnostics

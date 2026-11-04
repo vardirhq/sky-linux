@@ -10,6 +10,9 @@ import type {
   DaemonStatus,
   HistoryEntry,
   NewBackupJob,
+  NewSyncPair,
+  ReviewAction,
+  SyncPair,
   ProviderInfo,
   Provider,
   SkyEvent,
@@ -68,22 +71,20 @@ class TauriTransport implements Transport {
   }
 }
 
-let transport: Transport | null = null;
+// Cache the promise, not the result: concurrent first calls must share one
+// transport (otherwise the demo backend would be created several times).
+let transport: Promise<Transport> | null = null;
 
-export async function getTransport(): Promise<Transport> {
-  if (transport) return transport;
-  if (isTauri()) {
-    transport = new TauriTransport();
-  } else {
-    const { DemoTransport } = await import("./demo");
-    transport = new DemoTransport();
-  }
+export function getTransport(): Promise<Transport> {
+  transport ??= isTauri()
+    ? Promise.resolve(new TauriTransport())
+    : import("./demo").then(({ DemoTransport }) => new DemoTransport());
   return transport;
 }
 
 /** For tests. */
 export function setTransport(t: Transport) {
-  transport = t;
+  transport = Promise.resolve(t);
 }
 
 async function call<T>(method: string, params?: unknown): Promise<T> {
@@ -117,6 +118,13 @@ export const api = {
     call<BackupJob>("backups.setEnabled", { id, enabled }),
   deleteBackup: (id: string) => call<void>("backups.delete", { id }),
   runBackup: (id: string) => call<BackupJob>("backups.runNow", { id }),
+
+  syncPairs: () => call<SyncPair[]>("sync.list"),
+  createSync: (pair: NewSyncPair) => call<SyncPair>("sync.create", pair),
+  setSyncEnabled: (id: string, enabled: boolean) => call<SyncPair>("sync.setEnabled", { id, enabled }),
+  deleteSync: (id: string) => call<void>("sync.delete", { id }),
+  runSync: (id: string) => call<SyncPair>("sync.runNow", { id }),
+  resolveSync: (id: string, action: ReviewAction) => call<SyncPair>("sync.resolve", { id, action }),
 
   history: (limit = 100) => call<HistoryEntry[]>("history.list", { limit }),
   getSetting: <T>(key: string) => call<T | null>("settings.get", { key }),
@@ -156,6 +164,22 @@ export async function openExternal(url: string) {
   }
   const { openUrl } = await import("@tauri-apps/plugin-opener");
   await openUrl(url);
+}
+
+export async function homeDir(): Promise<string> {
+  if (!isTauri()) return "/home/ola";
+  const { homeDir } = await import("@tauri-apps/api/path");
+  return (await homeDir()).replace(/\/+$/, "");
+}
+
+/** Open a local folder in the file manager. */
+export async function openFolder(path: string) {
+  if (!isTauri()) {
+    window.alert(path);
+    return;
+  }
+  const { openPath } = await import("@tauri-apps/plugin-opener");
+  await openPath(path);
 }
 
 export async function defaultDownloadDir(): Promise<string> {

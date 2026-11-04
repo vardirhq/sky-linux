@@ -12,6 +12,7 @@ The goal is to prove that rclone can authenticate with a real Telia Sky account,
 | Can rclone's RC API be locked down? | **Yes.** `rclone rcd --rc-addr unix:///…` works; requests without the per-launch credentials get `401`. |
 | Can the token store be encrypted without prompts? | **Yes.** `rclone config encryption set --password-command "printenv VAR"` creates the encrypted config. `RCLONE_CONFIG_PASS` then keeps it encrypted across RC writes and token refreshes. This is covered by `rclone_config_is_encrypted_at_rest`. |
 | Upload, download, move and copy semantics | Covered by the end-to-end tests in `crates/sky-core/tests/rclone_integration.rs` against a real rclone process (alias remote). `sync/copy` never deletes at the destination. |
+| Is bisync usable over RC? | **Yes, with one trap:** over RC bisync's delete limit defaults to **0 %**, so any deletion aborts with "too many deletes". Sky Core always sends `maxDelete` explicitly. `backupDir1`, `checkAccess`, `conflictResolve`/`conflictLoser` and `resilient`/`recover` all work as documented. |
 | Do RC filters work for search? | `_filter.IncludeRule` applies to files only, and directories are always listed, so Sky Core filters names after the listing. |
 
 ## Needs a real Telia Sky account (run `scripts/feasibility.sh`)
@@ -24,6 +25,7 @@ The goal is to prove that rclone can authenticate with a real Telia Sky account,
 - [ ] Refresh-token lifetime when idle (re-run after a week)
 - [ ] Rate limits and behaviour for large uploads (multi-GB, resumable `upload_resume_limit`)
 - [ ] Trash behaviour of `deletefile` and `purge` in the Telia Sky UI
+- [ ] bisync against Jottacloud: modtime precision, MD5 checksums (`compare=size,modtime,checksum`?), and how edits from the Telia Sky phone app show up
 
 ## Open decisions
 

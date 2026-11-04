@@ -247,6 +247,92 @@ impl Database {
         })
     }
 
+    // ---- sync pairs -------------------------------------------------------
+
+    fn sync_row(r: &Row) -> rusqlite::Result<SyncPair> {
+        Ok(SyncPair {
+            id: r.get("id")?,
+            account_id: r.get("account_id")?,
+            name: r.get("name")?,
+            local_path: r.get::<_, String>("local_path")?.into(),
+            remote_path: r.get("remote_path")?,
+            enabled: r.get("enabled")?,
+            max_delete_percent: r.get("max_delete_percent")?,
+            poll_minutes: r.get("poll_minutes")?,
+            state: from_json(&r.get::<_, String>("state")?)?,
+            last_sync: r.get("last_sync")?,
+            last_summary: opt_json(r.get("last_summary")?)?,
+            last_error: opt_json(r.get("last_error")?)?,
+            recovery_path: r.get::<_, String>("recovery_path")?.into(),
+            created_at: r.get("created_at")?,
+        })
+    }
+
+    pub fn upsert_sync_pair(&self, p: &SyncPair) -> Result<()> {
+        let state = to_json(&p.state)?;
+        let summary = p.last_summary.as_ref().map(to_json).transpose()?;
+        let error = p.last_error.as_ref().map(to_json).transpose()?;
+        let local = p.local_path.to_string_lossy().to_string();
+        let recovery = p.recovery_path.to_string_lossy().to_string();
+        self.with(|c| {
+            c.execute(
+                "INSERT INTO sync_pairs(id, account_id, name, local_path, remote_path, enabled,
+                    max_delete_percent, poll_minutes, state, last_sync, last_summary, last_error,
+                    recovery_path, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 ON CONFLICT(id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
+                    max_delete_percent = excluded.max_delete_percent,
+                    poll_minutes = excluded.poll_minutes, state = excluded.state,
+                    last_sync = excluded.last_sync, last_summary = excluded.last_summary,
+                    last_error = excluded.last_error",
+                params![
+                    p.id,
+                    p.account_id,
+                    p.name,
+                    local,
+                    p.remote_path,
+                    p.enabled,
+                    p.max_delete_percent,
+                    p.poll_minutes,
+                    state,
+                    p.last_sync,
+                    summary,
+                    error,
+                    recovery,
+                    p.created_at
+                ],
+            )?;
+            Ok(())
+        })
+    }
+
+    pub fn sync_pairs(&self) -> Result<Vec<SyncPair>> {
+        self.with(|c| {
+            let mut st = c.prepare("SELECT * FROM sync_pairs ORDER BY created_at")?;
+            let rows = st.query_map([], Self::sync_row)?;
+            Ok(rows.collect::<rusqlite::Result<_>>()?)
+        })
+    }
+
+    pub fn sync_pair(&self, id: Uuid) -> Result<SyncPair> {
+        self.with(|c| {
+            c.query_row(
+                "SELECT * FROM sync_pairs WHERE id = ?1",
+                [id],
+                Self::sync_row,
+            )
+            .optional()?
+            .ok_or_else(|| CoreError::NotFound(format!("sync pair {id}")))
+        })
+    }
+
+    pub fn delete_sync_pair(&self, id: Uuid) -> Result<()> {
+        self.with(|c| {
+            c.execute("DELETE FROM sync_pairs WHERE id = ?1", [id])?;
+            Ok(())
+        })
+    }
+
     // ---- transfers --------------------------------------------------------
 
     fn transfer_row(r: &Row) -> rusqlite::Result<Transfer> {

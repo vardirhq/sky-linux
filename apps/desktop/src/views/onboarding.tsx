@@ -1,10 +1,12 @@
-import { useState } from "react";
-import { Check, CheckCircle2, Cloud, FolderPlus, Loader2, ShieldCheck, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeftRight, Check, CheckCircle2, Cloud, FolderPlus, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, openExternal, pickFolders, SkyError } from "@/lib/api";
+import { api, homeDir, openExternal, pickFolders, SkyError } from "@/lib/api";
+import { DEFAULT_SYNC_FOLDER } from "./sync";
+import { Switch } from "@/components/ui/switch";
 import { useAccounts } from "@/lib/hooks";
 import type { Account } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import { cn, tildePath } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 import { Button } from "@/components/ui/button";
 import { SkyLogo } from "@/components/layout";
@@ -12,11 +14,17 @@ import { localizeError, useT, type Key } from "@/i18n";
 
 const STEPS: Key[] = ["onboarding.steps.welcome", "onboarding.steps.connect", "onboarding.steps.folders", "onboarding.steps.finish"];
 
-/** First-run experience: welcome → connect → backup folders → finish. No terminal needed. */
+/** First-run experience: welcome → connect → sync & backup → finish. No terminal needed. */
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0);
   const [account, setAccount] = useState<Account | null>(useAccounts().data?.[0] ?? null);
   const [folders, setFolders] = useState<string[]>([]);
+  // Dropbox-style default: a "Telia Sky" folder in the home folder, synced.
+  const [syncFolder, setSyncFolder] = useState(true);
+  const [syncPath, setSyncPath] = useState("");
+  useEffect(() => {
+    homeDir().then((h) => setSyncPath(`${h}/${DEFAULT_SYNC_FOLDER}`));
+  }, []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const authUrl = useUi((s) => s.authUrl);
@@ -40,6 +48,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setBusy(true);
     setError(null);
     try {
+      if (syncFolder && syncPath) {
+        await api.createSync({ accountId: account!.id, localPath: syncPath, remotePath: DEFAULT_SYNC_FOLDER, createLocal: true });
+      }
       for (const f of folders) {
         const name = f.split("/").filter(Boolean).pop() ?? "Folder";
         await api.createBackup({ accountId: account!.id, localPath: f, remotePath: `Backup/${name}` });
@@ -107,9 +118,23 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         {step === 2 && (
           <div className="space-y-5">
             <div className="text-center">
-              <ShieldCheck className="mx-auto size-16 text-success" strokeWidth={1.4} />
-              <h1 className="mt-3 text-2xl font-bold">{t("onboarding.foldersTitle")}</h1>
+              <h1 className="text-2xl font-bold">{t("onboarding.foldersTitle")}</h1>
               <p className="mt-2 text-fg-muted">{t("onboarding.foldersBody")}</p>
+            </div>
+            <div className={cn("flex gap-3 rounded-xl border p-4", syncFolder ? "border-accent bg-accent-soft/50" : "border-border")}>
+              <ArrowLeftRight className="mt-0.5 size-5 shrink-0 text-accent" />
+              <div className="flex-1 text-sm">
+                <p className="font-semibold">{t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })}</p>
+                <p className="text-fg-muted">{t("onboarding.syncOptionBody", { path: tildePath(syncPath, syncPath.slice(0, syncPath.lastIndexOf("/"))), remote: DEFAULT_SYNC_FOLDER })}</p>
+              </div>
+              <Switch label={t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })} checked={syncFolder} onChange={setSyncFolder} />
+            </div>
+            <div className="flex gap-3 rounded-xl border border-border p-4">
+              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-success" />
+              <div className="flex-1 text-sm">
+                <p className="font-semibold">{t("onboarding.backupOption")}</p>
+                <p className="text-fg-muted">{t("onboarding.backupOptionBody")}</p>
+              </div>
             </div>
             <ul className="space-y-2">
               {folders.map((f) => (
@@ -128,7 +153,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             {error && <p className="text-sm text-danger">{error}</p>}
             <div className="flex justify-between">
               <Button variant="ghost" onClick={() => setStep(3)}>{t("onboarding.skip")}</Button>
-              <Button variant="primary" disabled={!folders.length || busy} onClick={finish}>
+              <Button variant="primary" disabled={(!folders.length && !syncFolder) || busy} onClick={finish}>
                 {busy && <Loader2 className="animate-spin" />} {t("onboarding.continue")}
               </Button>
             </div>

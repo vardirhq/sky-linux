@@ -302,6 +302,25 @@ impl RcloneClient {
         Ok(r.jobid)
     }
 
+    /// Two-way sync (async job). See `crate::sync` for the safety model.
+    pub async fn bisync_async(&self, opts: &BisyncOpts, group: &str) -> Result<i64> {
+        let mut params = serde_json::to_value(opts)?;
+        params["_async"] = Value::Bool(true);
+        params["_group"] = Value::String(group.to_string());
+        let r: JobStarted = self.typed("sync/bisync", params).await?;
+        Ok(r.jobid)
+    }
+
+    /// Copy one file synchronously (small files such as sync markers).
+    pub async fn copy_file(&self, src_fs: &str, src: &str, dst_fs: &str, dst: &str) -> Result<()> {
+        self.call(
+            "operations/copyfile",
+            json!({ "srcFs": src_fs, "srcRemote": src, "dstFs": dst_fs, "dstRemote": dst }),
+        )
+        .await
+        .map(drop)
+    }
+
     // ---- remotes / configuration ---------------------------------------
 
     pub async fn list_remotes(&self) -> Result<Vec<String>> {

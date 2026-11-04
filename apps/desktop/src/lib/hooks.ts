@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { api, onEvent, SkyError } from "./api";
+import { api, homeDir, onEvent, SkyError } from "./api";
 import type { Transfer } from "./types";
 import { useUi } from "@/store/ui";
 
@@ -12,6 +12,7 @@ export const keys = {
   search: (q: string) => ["search", q] as const,
   transfers: ["transfers"] as const,
   backups: ["backups"] as const,
+  sync: ["sync"] as const,
   history: ["history"] as const,
   setting: (k: string) => ["setting", k] as const,
 };
@@ -24,6 +25,10 @@ export const useSearch = (q: string) =>
   useQuery({ queryKey: keys.search(q), queryFn: () => api.search(q), enabled: q.trim().length >= 2 });
 export const useTransfers = () => useQuery({ queryKey: keys.transfers, queryFn: () => api.transfers(200) });
 export const useBackups = () => useQuery({ queryKey: keys.backups, queryFn: api.backups });
+/** The user's home folder (for showing paths as ~/…). */
+export const useHome = () => useQuery({ queryKey: ["home"], queryFn: homeDir, staleTime: Infinity });
+
+export const useSyncPairs = () => useQuery({ queryKey: keys.sync, queryFn: api.syncPairs });
 export const useHistory = () => useQuery({ queryKey: keys.history, queryFn: () => api.history(200) });
 export const useSetting = <T,>(key: string) =>
   useQuery({ queryKey: keys.setting(key), queryFn: () => api.getSetting<T>(key) });
@@ -100,6 +105,16 @@ export function useDaemonEvents() {
         case "backupJobRemoved":
           qc.invalidateQueries({ queryKey: keys.backups });
           qc.invalidateQueries({ queryKey: keys.history });
+          break;
+        case "syncStarted":
+        case "syncFinished":
+        case "syncPairChanged":
+        case "syncPairRemoved":
+          qc.invalidateQueries({ queryKey: keys.sync });
+          if (e.type === "syncFinished") {
+            qc.invalidateQueries({ queryKey: ["list"] });
+            qc.invalidateQueries({ queryKey: keys.history });
+          }
           break;
         case "error":
           ui.toast({ kind: "error", title: e.data.title, message: e.data.message, error: e.data });

@@ -2,6 +2,7 @@ import { useMemo, useState, type DragEvent } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Check,
   ChevronLeft,
   ChevronRight,
   Cloud,
@@ -19,8 +20,8 @@ import {
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { api, defaultDownloadDir, pickFiles } from "@/lib/api";
-import { keys, useAction, useBackups, useListing, useSearch, useTransfers } from "@/lib/hooks";
-import type { BackupJob, CloudEntry, Transfer } from "@/lib/types";
+import { keys, useAction, useBackups, useListing, useSearch, useSyncPairs, useTransfers } from "@/lib/hooks";
+import type { BackupJob, CloudEntry, SyncPair, Transfer } from "@/lib/types";
 import { cn, formatBytes, formatDate, joinPath, parentPath } from "@/lib/utils";
 import { useUi } from "@/store/ui";
 import { useT } from "@/i18n";
@@ -34,17 +35,24 @@ import { Menu } from "./ui/menu";
 import { FileIcon } from "./file-icon";
 
 type SortKey = "name" | "size" | "modified";
-type EntryStatus = "syncing" | "protected" | "cloud";
+type EntryStatus = "syncing" | "synced" | "protected" | "cloud";
 
 const under = (path: string, root: string) => path === root || path.startsWith(root + "/");
 
-export function entryStatus(e: CloudEntry, backups: BackupJob[], transfers: Transfer[]): EntryStatus {
+export function entryStatus(
+  e: CloudEntry,
+  backups: BackupJob[],
+  transfers: Transfer[],
+  syncPairs: SyncPair[] = [],
+): EntryStatus {
   const busy = transfers.some(
     (t) =>
       (t.state === "running" || t.state === "queued") &&
       (t.direction === "upload" ? under(t.destination, e.path) || under(e.path, t.destination) : under(t.source, e.path)),
   );
-  if (busy) return "syncing";
+  const pairs = syncPairs.filter((p) => p.enabled && (under(e.path, p.remotePath) || under(p.remotePath, e.path)));
+  if (busy || pairs.some((p) => p.state.kind === "syncing" || p.state.kind === "new")) return "syncing";
+  if (pairs.some((p) => under(e.path, p.remotePath))) return "synced";
   if (backups.some((b) => b.enabled && (under(e.path, b.remotePath) || under(b.remotePath, e.path)))) return "protected";
   return "cloud";
 }
@@ -61,6 +69,12 @@ export function StatusBadge({ status }: { status: EntryStatus }) {
     return (
       <Badge tone="success" title={t("files.protectedHint")}>
         <ShieldCheck /> {t("files.protected")}
+      </Badge>
+    );
+  if (status === "synced")
+    return (
+      <Badge tone="success" title={t("files.syncedHint")}>
+        <Check /> {t("files.synced")}
       </Badge>
     );
   return (
@@ -91,6 +105,7 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
   const results = useSearch(ui.search);
   const backups = useBackups().data ?? [];
   const transfers = useTransfers().data ?? [];
+  const syncPairs = useSyncPairs().data ?? [];
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({ key: "name", asc: true });
   const [renaming, setRenaming] = useState<CloudEntry | null>(null);
   const [newFolder, setNewFolder] = useState(false);
@@ -301,7 +316,7 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
                   <td className="text-fg-muted tabular-nums">{formatBytes(e.size)}</td>
                   <td className="text-fg-muted tabular-nums">{formatDate(e.modified)}</td>
                   <td>
-                    <StatusBadge status={entryStatus(e, backups, transfers)} />
+                    <StatusBadge status={entryStatus(e, backups, transfers, syncPairs)} />
                   </td>
                   <td className="pr-2">
                     <Menu

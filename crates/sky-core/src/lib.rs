@@ -22,6 +22,7 @@ pub mod provider;
 pub mod rclone;
 pub mod secrets;
 pub mod service;
+pub mod sync;
 pub mod transfers;
 
 pub use error::{CoreError, Result, UserError};

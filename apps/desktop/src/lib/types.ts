@@ -129,6 +129,49 @@ export interface NewBackupJob {
   exclude?: string[];
 }
 
+export type ReviewReason = "too_many_deletes" | "folder_unavailable" | "marker_missing";
+export type ReviewAction = "allow_deletions" | "restore_all" | "retry";
+
+export type SyncState =
+  | { kind: "new" }
+  | { kind: "idle" }
+  | { kind: "syncing" }
+  | { kind: "needsReview"; reason: ReviewReason }
+  | { kind: "error" };
+
+export interface SyncSummary {
+  uploaded: number;
+  downloaded: number;
+  deletedLocal: number;
+  deletedRemote: number;
+  conflicts: number;
+}
+
+export interface SyncPair {
+  id: string;
+  accountId: string;
+  name: string;
+  localPath: string;
+  remotePath: string;
+  enabled: boolean;
+  maxDeletePercent: number;
+  pollMinutes: number;
+  state: SyncState;
+  lastSync: string | null;
+  lastSummary: SyncSummary | null;
+  lastError: UserError | null;
+  recoveryPath: string;
+  createdAt: string;
+}
+
+export interface NewSyncPair {
+  accountId: string;
+  name?: string | null;
+  localPath: string;
+  remotePath: string;
+  createLocal?: boolean;
+}
+
 export interface LiveStats {
   bytes: number;
   totalBytes: number;
@@ -146,6 +189,7 @@ export interface DaemonStatus {
   accounts: Account[];
   activeTransfers: number;
   backupJobs: number;
+  syncPairs: number;
 }
 
 export type SkyEvent =
@@ -160,6 +204,10 @@ export type SkyEvent =
   | { type: "backupFinished"; data: BackupJob }
   | { type: "backupJobChanged"; data: BackupJob }
   | { type: "backupJobRemoved"; data: { id: string } }
+  | { type: "syncStarted"; data: { id: string } }
+  | { type: "syncFinished"; data: SyncPair }
+  | { type: "syncPairChanged"; data: SyncPair }
+  | { type: "syncPairRemoved"; data: { id: string } }
   | { type: "error"; data: UserError };
 
 export interface HistoryEntry {

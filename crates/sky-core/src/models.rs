@@ -202,6 +202,83 @@ pub struct NewBackupJob {
     pub exclude: Vec<String>,
 }
 
+/// Where a two-way sync pair stands.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum SyncState {
+    /// Created; the first run merges both sides without deleting anything.
+    New,
+    Idle,
+    Syncing,
+    /// Stopped to protect files; waits for the user to decide.
+    #[serde(rename_all = "camelCase")]
+    NeedsReview {
+        reason: ReviewReason,
+    },
+    /// Last run failed; it will be retried automatically.
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewReason {
+    /// More files would be deleted than the pair's limit allows.
+    TooManyDeletes,
+    /// The local folder is missing (e.g. an unmounted drive).
+    FolderUnavailable,
+    /// The `.sky-linux-sync` marker vanished on one side: the folder may
+    /// have been replaced, so sync refuses to treat it as "all deleted".
+    MarkerMissing,
+}
+
+/// What the last sync run did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSummary {
+    pub uploaded: u32,
+    pub downloaded: u32,
+    pub deleted_local: u32,
+    pub deleted_remote: u32,
+    pub conflicts: u32,
+}
+
+/// A local folder kept identical with a cloud folder in both directions.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPair {
+    pub id: Uuid,
+    pub account_id: Uuid,
+    pub name: String,
+    pub local_path: PathBuf,
+    /// Cloud folder relative to the remote root.
+    pub remote_path: String,
+    pub enabled: bool,
+    /// A run that would delete more than this share of files stops for review.
+    pub max_delete_percent: u8,
+    /// How often to look for changes made in the cloud.
+    pub poll_minutes: u32,
+    pub state: SyncState,
+    pub last_sync: Option<DateTime<Utc>>,
+    pub last_summary: Option<SyncSummary>,
+    pub last_error: Option<crate::UserError>,
+    /// Local files removed or overwritten by sync are moved here.
+    pub recovery_path: PathBuf,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewSyncPair {
+    pub account_id: Uuid,
+    #[serde(default)]
+    pub name: Option<String>,
+    pub local_path: PathBuf,
+    pub remote_path: String,
+    /// Create the local folder if it doesn't exist (e.g. `~/Telia Sky`).
+    #[serde(default)]
+    pub create_local: bool,
+}
+
 /// Aggregated live transfer statistics (from rclone `core/stats`).
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -225,4 +302,6 @@ pub struct DaemonStatus {
     pub accounts: Vec<Account>,
     pub active_transfers: usize,
     pub backup_jobs: usize,
+    #[serde(default)]
+    pub sync_pairs: usize,
 }

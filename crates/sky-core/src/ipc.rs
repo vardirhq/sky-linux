@@ -116,6 +116,21 @@ pub enum Request {
     DeleteBackup { id: Uuid },
     #[serde(rename = "backups.runNow")]
     RunBackup { id: Uuid },
+    #[serde(rename = "sync.list")]
+    SyncPairs,
+    #[serde(rename = "sync.create")]
+    CreateSync(NewSyncPair),
+    #[serde(rename = "sync.setEnabled")]
+    SetSyncEnabled { id: Uuid, enabled: bool },
+    #[serde(rename = "sync.delete")]
+    DeleteSync { id: Uuid },
+    #[serde(rename = "sync.runNow")]
+    RunSync { id: Uuid },
+    #[serde(rename = "sync.resolve")]
+    ResolveSync {
+        id: Uuid,
+        action: crate::sync::ReviewAction,
+    },
     #[serde(rename = "history.list")]
     History {
         #[serde(default = "default_limit")]
@@ -222,6 +237,12 @@ pub async fn dispatch(core: &SkyCore, req: Request) -> Result<Value> {
         }
         Request::DeleteBackup { id } => v(core.backups.delete(id).await?)?,
         Request::RunBackup { id } => v(core.backups.run_now(id).await?)?,
+        Request::SyncPairs => v(core.sync.list()?)?,
+        Request::CreateSync(new) => v(core.sync.create(new).await?)?,
+        Request::SetSyncEnabled { id, enabled } => v(core.sync.set_enabled(id, enabled).await?)?,
+        Request::DeleteSync { id } => v(core.sync.delete(id).await?)?,
+        Request::RunSync { id } => v(core.sync.run_now(id).await?)?,
+        Request::ResolveSync { id, action } => v(core.sync.resolve(id, action).await?)?,
         Request::History { limit } => v(core.history(limit.min(1000))?)?,
         Request::GetSetting { key } => {
             check_setting(&key)?;

@@ -11,6 +11,8 @@ import type {
   HistoryEntry,
   LiveStats,
   NewBackupJob,
+  NewSyncPair,
+  SyncPair,
   SkyEvent,
   Transfer,
 } from "./types";
@@ -38,6 +40,7 @@ function entry(path: string, kind: "file" | "folder", size: number | null, modif
 
 const tree: Record<string, CloudEntry[]> = {
   "": [
+    entry("Telia Sky", "folder", 48 * GB, ago(3)),
     entry("Photos", "folder", 1.4 * TB, "2025-01-22T20:18:00Z"),
     entry("Documents", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
     entry("Family Backup", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
@@ -59,6 +62,28 @@ const tree: Record<string, CloudEntry[]> = {
     entry("Documents/Notes.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
   ],
 };
+
+function syncPair(p: Partial<SyncPair>): SyncPair {
+  return {
+    id: uid(),
+    accountId: account.id,
+    name: "Telia Sky",
+    localPath: "/home/ola/Telia Sky",
+    remotePath: "Telia Sky",
+    enabled: true,
+    maxDeletePercent: 50,
+    pollMinutes: 5,
+    state: { kind: "idle" },
+    lastSync: ago(3),
+    lastSummary: { uploaded: 4, downloaded: 2, deletedLocal: 0, deletedRemote: 1, conflicts: 1 },
+    lastError: null,
+    recoveryPath: "/home/ola/.local/share/sky-linux/sync/demo/recovery",
+    createdAt: ago(60 * 24 * 14),
+    ...p,
+  };
+}
+
+const syncPairs: SyncPair[] = [syncPair({ id: "00000000-0000-4000-8000-000000000201" })];
 
 const backups: BackupJob[] = [
   { name: "Family Backup", local: "/home/ola/Family", remote: "Family Backup" },
@@ -136,6 +161,19 @@ export class DemoTransport implements Transport {
   constructor() {
     if (typeof window !== "undefined") {
       const q = new URLSearchParams(window.location.search);
+      if (q.has("review")) {
+        syncPairs.push(
+          syncPair({
+            id: "00000000-0000-4000-8000-000000000202",
+            name: "Studier",
+            localPath: "/home/ola/Studier",
+            remotePath: "Studier",
+            state: { kind: "needsReview", reason: "too_many_deletes" },
+            lastSync: ago(90),
+            lastSummary: null,
+          }),
+        );
+      }
       if (q.has("onboarding")) {
         this.connected = false;
         this.settings.onboardingComplete = false;
@@ -197,6 +235,7 @@ export class DemoTransport implements Transport {
           accounts: this.connected ? [account] : [],
           activeTransfers: transfers.filter((t) => t.state === "running").length,
           backupJobs: backups.length,
+          syncPairs: syncPairs.length,
         };
       case "accounts.providers":
         return [
@@ -276,6 +315,54 @@ export class DemoTransport implements Transport {
           this.emit({ type: "transferUpdated", data: { ...t } });
         }
         return null;
+      }
+      case "sync.list":
+        return syncPairs;
+      case "sync.create": {
+        const n = p as NewSyncPair;
+        if (n.localPath === "/home/ola")
+          throw new SkyError({
+            code: "safety",
+            title: "Stopped to protect your files",
+            message: "Your whole home folder can't be synced.",
+            action: "none",
+            technical: "",
+            rule: "home_folder",
+          });
+        const pair = syncPair({
+          name: n.name || n.localPath.split("/").filter(Boolean).pop() || "Sync",
+          localPath: n.localPath,
+          remotePath: n.remotePath,
+          state: { kind: "new" },
+          lastSync: null,
+          lastSummary: null,
+        });
+        syncPairs.push(pair);
+        setTimeout(() => {
+          pair.state = { kind: "idle" };
+          pair.lastSync = now();
+          pair.lastSummary = { uploaded: 0, downloaded: 12, deletedLocal: 0, deletedRemote: 0, conflicts: 0 };
+          this.emit({ type: "syncFinished", data: pair });
+        }, 2500);
+        return pair;
+      }
+      case "sync.setEnabled": {
+        const s = syncPairs.find((x) => x.id === p.id)!;
+        s.enabled = p.enabled;
+        return s;
+      }
+      case "sync.delete": {
+        const i = syncPairs.findIndex((x) => x.id === p.id);
+        if (i >= 0) syncPairs.splice(i, 1);
+        return null;
+      }
+      case "sync.runNow":
+      case "sync.resolve": {
+        const s = syncPairs.find((x) => x.id === p.id)!;
+        s.state = { kind: "idle" };
+        s.lastSync = now();
+        this.emit({ type: "syncFinished", data: s });
+        return s;
       }
       case "backups.list":
         return backups;

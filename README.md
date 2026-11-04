@@ -23,7 +23,7 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 | Background daemon that keeps running after the window closes | ✅ |
 | Encrypted rclone config, with the password kept in the Secret Service keyring | ✅ |
 | Norwegian Bokmål (default) and English UI, including translated Sky Core errors | ✅ |
-| Two-way sync | 🚧 Phase 4: deliberately disabled until it can be made safe |
+| Two-way sync (Dropbox-style `~/Telia Sky` folder) with recovery folder, delete limit, missing-folder protection and conflict copies | ✅ tested end-to-end |
 | DEB / RPM / AppImage packages | Configured (Tauri bundler); release CI to do |
 | Flatpak / AUR | Drafts in `packaging/` |
 
@@ -84,7 +84,7 @@ The UI defaults to **Norwegian Bokmål** (`apps/desktop/src/i18n/nb.ts`), with E
 
 ## Principles
 
-- **Safety first.** Backups use `rclone copy` semantics and never delete in the cloud. Two-way sync stays off until it has been thoroughly tested.
+- **Safety first.** Backups never delete in the cloud. Two-way sync starts with a merge, keeps every locally removed file in a recovery folder, stops for review on mass deletions, and refuses to run if the folder vanished.
 - **Reliable in the background.** Closing the window doesn't stop backups.
 - **Secure by default.** Tokens are kept in an encrypted rclone config, rclone listens only on a private socket, and the app needs no root.
 - **Human errors.** Technical failures are translated into clear, actionable messages, and the details stay one click away.

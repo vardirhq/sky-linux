@@ -1,6 +1,7 @@
 import {
   ArrowDown,
   ArrowDownUp,
+  ArrowLeftRight,
   ArrowUp,
   CheckCircle2,
   Clock,
@@ -15,7 +16,8 @@ import {
 } from "lucide-react";
 import { useMemo } from "react";
 import { api, pickFiles, pickFolders } from "@/lib/api";
-import { keys, useAction, useAccounts, useBackups, useHistory, useTransfers, useUsage } from "@/lib/hooks";
+import { keys, useAction, useAccounts, useBackups, useHistory, useSyncPairs, useTransfers, useUsage } from "@/lib/hooks";
+import { SyncStateBadge } from "./sync";
 import type { HistoryEntry } from "@/lib/types";
 import { cn, formatBytes, greeting, percent, timeAgo } from "@/lib/utils";
 import { useUi } from "@/store/ui";
@@ -34,6 +36,8 @@ export function Dashboard() {
   const usage = useUsage().data;
   const transfers = useTransfers().data ?? [];
   const backups = useBackups().data ?? [];
+  const syncPairs = useSyncPairs().data ?? [];
+  const reviewing = syncPairs.filter((p) => p.state.kind === "needsReview");
   const stats = useUi((s) => s.stats);
   const ui = useUi();
   const firstName = account?.displayName?.split(" ")[0];
@@ -54,7 +58,7 @@ export function Dashboard() {
     };
   }, [transfers]);
   const activeBackups = backups.filter((b) => b.enabled);
-  const healthy = activeBackups.every((b) => !b.lastError);
+  const healthy = activeBackups.every((b) => !b.lastError) && reviewing.length === 0;
 
   const upload = useAction((p: string[]) => api.upload(p, ui.cwd), [keys.transfers], t("files.toast.uploadStarted"));
 
@@ -117,7 +121,9 @@ export function Dashboard() {
           <CardHeader>
             <RefreshCw className="size-5 text-accent" />
             <CardTitle>{t("dashboard.syncStatus")}</CardTitle>
-            {running.length ? (
+            {reviewing.length ? (
+              <Badge tone="warning" className="ml-auto">{t("dashboard.attention")}</Badge>
+            ) : running.length || syncPairs.some((p) => p.state.kind === "syncing") ? (
               <Badge tone="accent" className="ml-auto">{t("dashboard.syncingBadge")}</Badge>
             ) : (
               <Badge tone="success" className="ml-auto">{t("dashboard.upToDateBadge")}</Badge>
@@ -196,7 +202,18 @@ export function Dashboard() {
               </div>
               <Progress value={running.length ? percent(runningBytes, runningTotal) : 100} />
               <ul className="space-y-2 pt-1">
-                {activeBackups.slice(0, 3).map((b) => (
+                {syncPairs.slice(0, 2).map((p) => (
+                  <li key={p.id} className="flex items-center gap-2">
+                    <ArrowLeftRight className="size-4 text-fg-muted" />
+                    <button className="truncate hover:text-accent" onClick={() => ui.setView("sync")}>
+                      {p.name}
+                    </button>
+                    <span className="ml-auto">
+                      <SyncStateBadge pair={p} />
+                    </span>
+                  </li>
+                ))}
+                {activeBackups.slice(0, Math.max(1, 3 - syncPairs.length)).map((b) => (
                   <li key={b.id} className="flex items-center gap-2">
                     <ShieldCheck className="size-4 text-fg-muted" />
                     <span className="truncate">{b.name}</span>
@@ -208,6 +225,13 @@ export function Dashboard() {
                     )}
                   </li>
                 ))}
+                {!syncPairs.length && (
+                  <li>
+                    <Button variant="link" onClick={() => ui.setView("sync")}>
+                      {t("dashboard.syncCta")}
+                    </Button>
+                  </li>
+                )}
                 {!activeBackups.length && (
                   <li>
                     <Button variant="link" onClick={() => ui.setView("backups")}>
@@ -241,6 +265,12 @@ export function describeHistory(h: HistoryEntry): { icon: "up" | "down" | "ok" |
       return e.data.lastError
         ? { icon: "warn", title: tr("activity.backupAttention"), detail: e.data.name }
         : { icon: "ok", title: tr("activity.backupDone"), detail: e.data.name };
+    case "syncFinished": {
+      const st = e.data.state.kind;
+      if (st === "needsReview") return { icon: "warn", title: tr("activity.syncReview"), detail: e.data.name };
+      if (st === "error") return { icon: "warn", title: tr("activity.syncFailed"), detail: e.data.name };
+      return { icon: "sync", title: tr("activity.synced"), detail: e.data.name };
+    }
     case "accountConnected":
       return { icon: "ok", title: tr("activity.accountConnected"), detail: e.data.displayName ?? PROVIDER_NAMES[e.data.provider] };
     case "accountRemoved":

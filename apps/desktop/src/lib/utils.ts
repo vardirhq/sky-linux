@@ -76,6 +76,13 @@ export function parentPath(path: string): string {
   return i < 0 ? "" : p.slice(0, i);
 }
 
+/** Show paths under the home folder as `~/…`. */
+export function tildePath(path: string, home?: string | null): string {
+  if (!home) return path;
+  const h = home.replace(/\/+$/, "");
+  return path === h ? "~" : path.startsWith(h + "/") ? `~${path.slice(h.length)}` : path;
+}
+
 export function greeting(date = new Date()): string {
   const h = date.getHours();
   if (h < 5) return t("greeting.night");

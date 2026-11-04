@@ -96,6 +96,39 @@ pub struct JobStatus {
     pub duration: f64,
     #[serde(default)]
     pub group: String,
+    /// The method's result once finished (for bisync: its log `output`).
+    #[serde(default)]
+    pub output: serde_json::Value,
+}
+
+/// Options for `sync/bisync`, using rclone's RC parameter names.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BisyncOpts {
+    pub path1: String,
+    pub path2: String,
+    pub workdir: String,
+    pub resync: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resync_mode: Option<String>,
+    pub check_access: bool,
+    pub check_filename: String,
+    /// Percentage. Must always be sent: over RC the default is 0%, which
+    /// aborts on any deletion (verified with rclone v1.75.2).
+    pub max_delete: u8,
+    pub force: bool,
+    pub resilient: bool,
+    pub recover: bool,
+    pub conflict_resolve: String,
+    pub conflict_loser: String,
+    pub conflict_suffix: String,
+    pub create_empty_src_dirs: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backup_dir1: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filters_file: Option<String>,
+    pub max_lock: String,
+    pub dry_run: bool,
 }
 
 /// `core/stats`.

@@ -16,6 +16,7 @@ use crate::models::*;
 use crate::paths::AppPaths;
 use crate::rclone::{remote_fs, RcloneClient, RcloneSupervisor, SupervisorConfig};
 use crate::secrets::{SecretStore, RCLONE_CONFIG_PASSWORD};
+use crate::sync::SyncManager;
 use crate::transfers::{TransferManager, TransferSpec};
 
 /// How long a cached folder listing is served without revalidation.
@@ -37,6 +38,7 @@ pub struct SkyCore {
     pub accounts: AccountManager,
     pub transfers: TransferManager,
     pub backups: BackupManager,
+    pub sync: SyncManager,
 }
 
 impl SkyCore {
@@ -71,6 +73,7 @@ impl SkyCore {
         let transfers = TransferManager::new(db.clone(), bus.clone(), rclone.client());
         let backups = BackupManager::new(db.clone(), bus.clone(), transfers.clone());
         let accounts = AccountManager::new(db.clone(), bus.clone(), rclone.clone());
+        let sync = SyncManager::new(db.clone(), bus.clone(), rclone.client(), opts.paths.clone());
 
         let core = Arc::new(Self {
             paths: opts.paths,
@@ -80,6 +83,7 @@ impl SkyCore {
             accounts,
             transfers,
             backups,
+            sync,
         });
         core.spawn_background();
         let resumed = core.transfers.resume_interrupted().await?;
@@ -87,6 +91,7 @@ impl SkyCore {
             tracing::info!(resumed, "resumed interrupted transfers");
         }
         core.backups.start_all().await?;
+        core.sync.start_all().await?;
         Ok(core)
     }
 
@@ -176,6 +181,7 @@ impl SkyCore {
             accounts: self.accounts.list()?,
             active_transfers: self.transfers.active().await.len(),
             backup_jobs: self.backups.list()?.len(),
+            sync_pairs: self.sync.list()?.len(),
         })
     }
 

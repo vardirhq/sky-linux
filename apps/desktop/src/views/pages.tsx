@@ -162,21 +162,6 @@ export function BackupsView() {
   );
 }
 
-export function SyncView() {
-  const t = useT();
-  return (
-    <Page title={t("sync.title")} subtitle={t("sync.subtitle")}>
-      <Card>
-        <CardContent className="space-y-3 pt-5 text-sm">
-          <Badge tone="accent">{t("sync.soon")}</Badge>
-          <p>{t("sync.why")}</p>
-          <p className="text-fg-muted">{t("sync.meanwhile")}</p>
-        </CardContent>
-      </Card>
-    </Page>
-  );
-}
-
 function TransferRow({ t }: { t: Transfer }) {
   const cancel = useAction(api.cancelTransfer, [keys.transfers]);
   const tt = useT();

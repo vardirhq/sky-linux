@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use crate::models::{Account, BackupJob, LiveStats, Transfer};
+use crate::models::{Account, BackupJob, LiveStats, SyncPair, Transfer};
 use crate::UserError;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -42,6 +42,14 @@ pub enum Event {
     BackupJobRemoved {
         id: Uuid,
     },
+    SyncStarted {
+        id: Uuid,
+    },
+    SyncFinished(SyncPair),
+    SyncPairChanged(SyncPair),
+    SyncPairRemoved {
+        id: Uuid,
+    },
     Error(UserError),
 }
 
@@ -60,6 +68,10 @@ impl Event {
             Event::BackupFinished(_) => "backup_finished",
             Event::BackupJobChanged(_) => "backup_job_changed",
             Event::BackupJobRemoved { .. } => "backup_job_removed",
+            Event::SyncStarted { .. } => "sync_started",
+            Event::SyncFinished(_) => "sync_finished",
+            Event::SyncPairChanged(_) => "sync_pair_changed",
+            Event::SyncPairRemoved { .. } => "sync_pair_removed",
             Event::Error(_) => "error",
         }
     }
@@ -71,6 +83,7 @@ impl Event {
             | Event::AccountRemoved { .. }
             | Event::AuthExpired { .. }
             | Event::BackupFinished(_)
+            | Event::SyncFinished(_)
             | Event::Error(_) => true,
             Event::TransferUpdated(t) => t.state.is_terminal(),
             _ => false,

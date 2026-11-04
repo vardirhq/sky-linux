@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { useLocale } from "@/i18n";
 
 beforeAll(() => useLocale.getState().setLocale("en"));
-import { formatBytes, formatEta, joinPath, parentPath, percent, timeAgo } from "./utils";
+import { formatBytes, formatEta, joinPath, parentPath, percent, tildePath, timeAgo } from "./utils";
 import { entryStatus } from "@/components/file-browser";
-import type { BackupJob, CloudEntry, Transfer } from "./types";
+import type { BackupJob, CloudEntry, SyncPair, Transfer } from "./types";
 
 describe("formatting", () => {
   it("formats sizes with decimal units", () => {
@@ -25,6 +25,12 @@ describe("formatting", () => {
     expect(percent(20, 10)).toBe(100);
     expect(percent(1, null)).toBe(0);
   });
+  it("abbreviates the home folder", () => {
+    expect(tildePath("/home/ola/Telia Sky", "/home/ola")).toBe("~/Telia Sky");
+    expect(tildePath("/home/ola2/x", "/home/ola")).toBe("/home/ola2/x");
+    expect(tildePath("/srv/x", null)).toBe("/srv/x");
+  });
+
   it("joins and splits cloud paths", () => {
     expect(joinPath("/Photos/", "a.jpg")).toBe("Photos/a.jpg");
     expect(joinPath("", "a.jpg")).toBe("a.jpg");
@@ -45,6 +51,16 @@ describe("entryStatus", () => {
     expect(entryStatus(folder("Backup"), [job], [])).toBe("protected");
     expect(entryStatus(folder("Backup/Pictures/2024"), [job], [])).toBe("protected");
   });
+  it("marks folders inside a synced pair as synced, and its parents as syncing while it runs", () => {
+    const pair = { remotePath: "Telia Sky", enabled: true, state: { kind: "idle" } } as SyncPair;
+    expect(entryStatus(folder("Telia Sky"), [], [], [pair])).toBe("synced");
+    expect(entryStatus(folder("Telia Sky/Notes"), [], [], [pair])).toBe("synced");
+    expect(entryStatus(folder("Telia Sky 2"), [], [], [pair])).toBe("cloud");
+    const running = { ...pair, state: { kind: "syncing" } } as SyncPair;
+    expect(entryStatus(folder("Telia Sky"), [], [], [running])).toBe("syncing");
+    expect(entryStatus(folder("Telia Sky"), [], [], [{ ...pair, enabled: false }])).toBe("cloud");
+  });
+
   it("does not confuse sibling prefixes", () => {
     expect(entryStatus(folder("Backup/Pictures2"), [job], [])).toBe("cloud");
   });
