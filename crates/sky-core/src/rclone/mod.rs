@@ -13,8 +13,8 @@ mod process;
 pub mod types;
 
 pub use client::{remote_fs, RcCredentials, RcloneClient};
-pub use config_flow::{jottacloud_answerer, ConfigAnswerer, ConfigQuestion, ConfigStep};
-pub use process::{extract_auth_url, RcloneLogLine, RcloneSupervisor, SupervisorConfig};
+pub use config_flow::{ConfigAnswerer, ConfigQuestion, ConfigStep, JottacloudWithToken};
+pub use process::{RcloneLogLine, RcloneSupervisor, SupervisorConfig};
 
 /// Minimum rclone version Sky Linux is tested against. Older releases lack
 /// some Jottacloud white-labels (including `telia_no`).

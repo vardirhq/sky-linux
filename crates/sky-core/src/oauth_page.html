@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}} – Sky Linux</title>
+<style>
+  :root {
+    --bg: #f4f7fb; --surface: #ffffff; --border: #e3e8ef;
+    --fg: #1b2330; --muted: #5b6575; --ok: #1f9d55; --ok-soft: #e5f6ec;
+    --warn: #b7791f; --warn-soft: #fdf3e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f141b; --surface: #161c25; --border: #263042;
+      --fg: #e7ecf3; --muted: #a3adbd; --ok-soft: #12301f; --warn-soft: #33280f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center; padding: 24px;
+    background: var(--bg); color: var(--fg);
+    font: 16px/1.5 "Inter", "Cantarell", "Noto Sans", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main {
+    width: min(440px, 100%); padding: 40px 32px; text-align: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 1px 2px rgb(16 24 40 / .04), 0 8px 24px rgb(16 24 40 / .06);
+  }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; font-size: 18px; }
+  .brand svg { width: 36px; height: 36px; }
+  .badge {
+    display: grid; place-items: center; width: 64px; height: 64px; margin: 28px auto 16px;
+    border-radius: 50%; background: var(--ok-soft); color: var(--ok);
+  }
+  [data-state="error"] .badge { background: var(--warn-soft); color: var(--warn); }
+  [data-state="error"] .ok, [data-state="ok"] .error { display: none; }
+  .badge svg { width: 32px; height: 32px; }
+  h1 { margin: 0 0 8px; font-size: 24px; letter-spacing: -0.01em; }
+  p { margin: 0; color: var(--muted); }
+</style>
+</head>
+<body data-state="{{state}}">
+<main>
+  <div class="brand" aria-hidden="true">
+    <svg viewBox="0 0 64 64">
+      <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#5aa9ff"/><stop offset="1" stop-color="#1f6feb"/>
+      </linearGradient></defs>
+      <path fill="url(#g)" d="M20 50h27a12 12 0 0 0 1.6-23.9A16 16 0 0 0 18.2 22 14 14 0 0 0 20 50z"/>
+    </svg>
+    Sky Linux
+  </div>
+  <div class="badge" aria-hidden="true">
+    <svg class="ok" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+    <svg class="error" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 7v6M12 17h.01"/></svg>
+  </div>
+  <h1>{{heading}}</h1>
+  <p>{{body}}</p>
+</main>
+</body>
+</html>

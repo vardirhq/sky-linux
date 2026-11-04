@@ -76,7 +76,7 @@ scripts/prepare-sidecars.sh       # builds sky-daemon and fetches a checksummed 
 cd apps/desktop && npm run tauri dev
 ```
 
-To check a **real Telia Sky account**, run `scripts/feasibility.sh`. It uses an isolated rclone config, signs in through your browser, runs an upload/download round trip in a scratch folder, forces a token refresh, and writes a Markdown report.
+To try Sky Linux's own sign-in with a real account, run `sky-daemon run` and then `sky-daemon sign-in` in another terminal. To check a **real Telia Sky account** with plain rclone, run `scripts/feasibility.sh`. It uses an isolated rclone config, signs in through your browser, runs an upload/download round trip in a scratch folder, forces a token refresh, and writes a Markdown report.
 
 ## Translations
 

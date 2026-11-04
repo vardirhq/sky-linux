@@ -1,7 +1,8 @@
 //! Account manager: connecting and disconnecting cloud accounts.
 //!
-//! Tokens are owned by rclone (inside Sky Linux's private, encrypted
-//! `rclone.conf`); rclone refreshes them transparently. Sky Core only stores
+//! Sign-in runs in Sky Core (`crate::oauth`) so the browser lands on Sky
+//! Linux's own page. Tokens are then owned by rclone (inside Sky Linux's
+//! private, encrypted `rclone.conf`); rclone refreshes them transparently. Sky Core only stores
 //! non-secret account metadata in SQLite.
 
 use std::sync::Arc;
@@ -13,8 +14,10 @@ use crate::db::Database;
 use crate::error::{CoreError, Result};
 use crate::events::{Event, EventBus};
 use crate::models::Account;
+use crate::oauth::{OAuthService, PageLanguage, SignIn, REDIRECT_PORT};
 use crate::provider::Provider;
-use crate::rclone::{extract_auth_url, jottacloud_answerer, remote_fs, RcloneSupervisor};
+use crate::rclone::{remote_fs, JottacloudWithToken, RcloneSupervisor};
+use serde_json::json;
 
 pub const RCLONE_BACKEND: &str = "jottacloud";
 
@@ -54,42 +57,52 @@ impl AccountManager {
     }
 
     /// Connect a provider via browser sign-in. Blocks until the user has
-    /// completed (or abandoned) sign-in; publishes [`Event::AuthUrl`] so the
-    /// UI can offer the link if the browser didn't open.
+    /// completed (or abandoned) sign-in. Publishes [`Event::AuthUrl`]; the
+    /// desktop app opens it in the browser.
     pub async fn connect(&self, provider: Provider) -> Result<Account> {
+        self.connect_with(
+            provider,
+            OAuthService::for_provider(provider),
+            REDIRECT_PORT,
+        )
+        .await
+    }
+
+    /// [`Self::connect`] against a given identity server (tests use a local one).
+    pub async fn connect_with(
+        &self,
+        provider: Provider,
+        service: OAuthService,
+        port: u16,
+    ) -> Result<Account> {
         let _guard = self.connecting.try_lock().map_err(|_| {
             CoreError::rule("sign_in_in_progress", "A sign-in is already in progress.")
         })?;
         if let Some(existing) = self.db.account_for_provider(provider)? {
             return Ok(existing);
         }
-        let client = self.rclone.client();
-        let remote = provider.remote_name();
-        if client.list_remotes().await?.contains(&remote) {
-            // Leftover from an abandoned sign-in.
-            client.delete_remote(&remote).await?;
-        }
 
-        let mut logs = self.rclone.logs();
-        let bus = self.bus.clone();
-        let forward = tokio::spawn(async move {
-            while let Ok(l) = logs.recv().await {
-                if let Some(url) = extract_auth_url(&l.line) {
-                    bus.publish(Event::AuthUrl { url });
-                }
-            }
+        // 1. Browser sign-in, ending on Sky Linux's own page.
+        let sign_in = SignIn::start(service, port).await?;
+        self.bus.publish(Event::AuthUrl {
+            url: sign_in.auth_url.clone(),
         });
-        let answerer = jottacloud_answerer(provider.rclone_whitelabel());
-        let result = client
-            .configure_remote(&remote, RCLONE_BACKEND, &answerer)
-            .await;
-        forward.abort();
-        if let Err(e) = result {
-            let _ = client.delete_remote(&remote).await;
-            return Err(e);
-        }
+        let lang = PageLanguage::from_setting(
+            self.db
+                .get_setting::<String>("language")
+                .ok()
+                .flatten()
+                .as_deref(),
+        );
+        let token = sign_in.finish(lang, provider.display_name()).await?;
 
-        // Prove the token works before declaring success.
+        // 2. Hand the token to rclone, which owns and refreshes it.
+        let remote = provider.remote_name();
+        self.create_remote_from_token(provider, &remote, &token)
+            .await?;
+
+        // 3. Prove the token works before declaring success.
+        let client = self.rclone.client();
         if let Err(e) = client.about(&remote_fs(&remote, "")).await {
             let _ = client.delete_remote(&remote).await;
             return Err(e);
@@ -108,6 +121,32 @@ impl AccountManager {
         self.db.record_event(&ev)?;
         self.bus.publish(ev);
         Ok(account)
+    }
+
+    /// Create the rclone remote for `provider` from a token obtained by
+    /// [`SignIn`], without rclone opening any browser page itself.
+    pub async fn create_remote_from_token(
+        &self,
+        provider: Provider,
+        remote: &str,
+        token: &str,
+    ) -> Result<()> {
+        let client = self.rclone.client();
+        if client.list_remotes().await?.iter().any(|r| r == remote) {
+            // Leftover from an abandoned sign-in.
+            client.delete_remote(remote).await?;
+        }
+        let answerer = JottacloudWithToken {
+            whitelabel: provider.rclone_whitelabel(),
+        };
+        let result = client
+            .configure_remote_with(remote, RCLONE_BACKEND, json!({ "token": token }), &answerer)
+            .await;
+        if let Err(e) = result {
+            let _ = client.delete_remote(remote).await;
+            return Err(e);
+        }
+        Ok(())
     }
 
     /// Register an already-configured rclone remote (advanced users, tests).

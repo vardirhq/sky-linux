@@ -8,9 +8,9 @@
 //! 1. `config_type` → `traditional` (browser-based OAuth; the "standard"
 //!    personal-login-token flow is not offered by Telia Sky)
 //! 2. `config_traditional` → `telia_no`
-//! 3. `config_is_local` → `true`: rclone starts a loopback OAuth listener on
-//!    `127.0.0.1:53682`, opens the browser and **blocks** until the user has
-//!    signed in. The URL is also logged so the UI can show it.
+//! 3. `config_refresh_token` ("Token already configured – replace it?") →
+//!    `false`: Sky Core ran the browser sign-in itself (`crate::oauth`) and
+//!    passed the token in, so rclone never starts its own sign-in page.
 //! 4. device / mountpoint selection → defaults (`Jotta` / `Archive`).
 //!
 //! Sky Core answers the questions it knows and accepts rclone's default for
@@ -84,6 +84,12 @@ pub struct ConfigStep {
 /// rclone's default.
 pub trait ConfigAnswerer: Send + Sync {
     fn answer(&self, q: &ConfigQuestion) -> Option<String>;
+
+    /// Abort instead of answering (e.g. rclone wants to start its own
+    /// browser sign-in although Sky Core already supplied a token).
+    fn refuses(&self, _q: &ConfigQuestion) -> bool {
+        false
+    }
 }
 
 impl<F> ConfigAnswerer for F
@@ -95,18 +101,30 @@ where
     }
 }
 
-/// Answers for a Jottacloud white-label using browser OAuth.
-pub fn jottacloud_answerer(whitelabel: &'static str) -> impl ConfigAnswerer {
-    move |q: &ConfigQuestion| {
+/// Answers for a Jottacloud white-label when Sky Core already ran the
+/// browser sign-in (see `crate::oauth`) and passes the token in.
+pub struct JottacloudWithToken {
+    pub whitelabel: &'static str,
+}
+
+impl ConfigAnswerer for JottacloudWithToken {
+    fn answer(&self, q: &ConfigQuestion) -> Option<String> {
         let name = q.option.as_ref()?.name.as_str();
         match name {
             "config_type" => Some("traditional".into()),
-            "config_traditional" => Some(whitelabel.into()),
-            "config_is_local" => Some("true".into()),
-            // Never let rclone write a config password interactively.
+            "config_traditional" => Some(self.whitelabel.into()),
+            // "Token already configured - replace it?" → keep ours.
+            "config_refresh_token" => Some("false".into()),
             n if n.contains("password") => Some(String::new()),
             _ => None,
         }
+    }
+
+    fn refuses(&self, q: &ConfigQuestion) -> bool {
+        matches!(
+            q.option.as_ref().map(|o| o.name.as_str()),
+            Some("config_is_local" | "config_token")
+        )
     }
 }
 
@@ -120,10 +138,23 @@ impl RcloneClient {
         kind: &str,
         answerer: &dyn ConfigAnswerer,
     ) -> Result<Vec<ConfigStep>> {
+        self.configure_remote_with(name, kind, json!({}), answerer)
+            .await
+    }
+
+    /// Like [`Self::configure_remote`], starting from known `parameters`
+    /// (e.g. a `token` obtained by Sky Core's own sign-in).
+    pub async fn configure_remote_with(
+        &self,
+        name: &str,
+        kind: &str,
+        parameters: Value,
+        answerer: &dyn ConfigAnswerer,
+    ) -> Result<Vec<ConfigStep>> {
         let mut q: ConfigQuestion = serde_json::from_value(
             self.call(
                 "config/create",
-                json!({ "name": name, "type": kind, "parameters": {},
+                json!({ "name": name, "type": kind, "parameters": parameters,
                          "opt": { "nonInteractive": true, "obscure": true } }),
             )
             .await?,
@@ -147,6 +178,11 @@ impl RcloneClient {
                 .as_ref()
                 .map(|o| o.name.clone())
                 .unwrap_or_default();
+            if answerer.refuses(&q) {
+                return Err(CoreError::Invalid(format!(
+                    "rclone asked an unexpected question during setup: {option}"
+                )));
+            }
             let answer = answerer.answer(&q).unwrap_or_else(|| q.default_answer());
             tracing::info!(option, state = %q.state, "answering rclone config question");
             steps.push(ConfigStep {
@@ -187,8 +223,10 @@ mod tests {
     }
 
     #[test]
-    fn telia_answers() {
-        let a = jottacloud_answerer("telia_no");
+    fn token_answers_keep_our_token_and_refuse_rclone_sign_in() {
+        let a = JottacloudWithToken {
+            whitelabel: "telia_no",
+        };
         assert_eq!(
             a.answer(&q("config_type", json!("standard"))).as_deref(),
             Some("traditional")
@@ -199,10 +237,13 @@ mod tests {
             Some("telia_no")
         );
         assert_eq!(
-            a.answer(&q("config_is_local", json!(true))).as_deref(),
-            Some("true")
+            a.answer(&q("config_refresh_token", json!(true))).as_deref(),
+            Some("false")
         );
-        assert_eq!(a.answer(&q("config_device", json!("Jotta"))), None);
+        assert_eq!(a.answer(&q("config_non_standard", json!(false))), None);
+        assert!(a.refuses(&q("config_is_local", json!(true))));
+        assert!(a.refuses(&q("config_token", json!(""))));
+        assert!(!a.refuses(&q("config_device", json!("Jotta"))));
     }
 
     #[test]

@@ -305,30 +305,9 @@ fn passthrough_env() -> Vec<(String, String)> {
         .collect()
 }
 
-/// Extract the URL rclone prints for the OAuth browser flow, e.g.
-/// `... go to the following link: http://127.0.0.1:53682/auth?state=xyz`.
-pub fn extract_auth_url(line: &str) -> Option<String> {
-    let idx = line.find("http://127.0.0.1:53682/auth")?;
-    let url: String = line[idx..]
-        .chars()
-        .take_while(|c| !c.is_whitespace() && *c != '"')
-        .collect();
-    Some(url)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn extracts_oauth_url() {
-        let line = r#"NOTICE: If your browser doesn't open automatically go to the following link: http://127.0.0.1:53682/auth?state=abc123"#;
-        assert_eq!(
-            extract_auth_url(line).as_deref(),
-            Some("http://127.0.0.1:53682/auth?state=abc123")
-        );
-        assert_eq!(extract_auth_url("NOTICE: nothing here"), None);
-    }
 
     #[test]
     fn env_passthrough_drops_rclone_vars() {
