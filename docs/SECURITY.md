@@ -16,6 +16,12 @@
 | Webview | Strict CSP and Tauri capabilities limited to dialog, notification, autostart and opener. No shell or filesystem plugin, and no remote content. |
 | Environment | rclone is started with a cleared environment plus an allowlist, so stray `RCLONE_*` variables can't change its behaviour. |
 
+## Sign-in
+
+- Sky Core runs the OAuth authorization-code flow with **PKCE** (S256) and a random `state`; callbacks with a wrong `state` are rejected, and other requests to the loopback port get a 404.
+- The loopback listener binds `127.0.0.1` only, lives for one sign-in (at most 10 minutes) and serves a static page with `Content-Security-Policy: default-src 'none'`, `no-store` and `no-referrer`.
+- The token goes straight to rclone's encrypted config; Sky Core keeps no copy. A token without a refresh token is refused.
+
 ## Safety rules for user data
 
 - Backups use `sync/copy`, which **never deletes** remote files. Backing up `/`, `/etc`, `/usr` and similar folders is refused.

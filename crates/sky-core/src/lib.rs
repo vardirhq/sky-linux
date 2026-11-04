@@ -17,6 +17,7 @@ pub mod error;
 pub mod events;
 pub mod ipc;
 pub mod models;
+pub mod oauth;
 pub mod paths;
 pub mod provider;
 pub mod rclone;

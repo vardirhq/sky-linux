@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::Value;
+use sky_core::events::Event;
 use sky_core::ipc::{IpcClient, IpcResult};
 use sky_core::paths::AppPaths;
 use sky_core::UserError;
@@ -97,6 +98,19 @@ async fn client(app: &AppHandle, state: &Daemon) -> Result<IpcClient, Box<UserEr
     let handle = app.clone();
     tokio::spawn(async move {
         while let Ok(ev) = events.recv().await {
+            match &ev {
+                // The daemon may run without the user's desktop environment
+                // (systemd), so the app opens the sign-in page.
+                Event::AuthUrl { url } => {
+                    use tauri_plugin_opener::OpenerExt;
+                    if let Err(e) = handle.opener().open_url(url.as_str(), None::<&str>) {
+                        tracing::warn!("could not open the browser: {e}");
+                    }
+                }
+                // Back from the browser: bring Sky Linux to the front.
+                Event::AccountConnected(_) => show_main(&handle),
+                _ => {}
+            }
             let _ = handle.emit("sky://event", &ev);
         }
     });

@@ -20,6 +20,7 @@ sky-daemon — Sky Linux background service
 USAGE:
     sky-daemon [run] [OPTIONS]    Run the service in the foreground (default)
     sky-daemon status             Print the status of a running service
+    sky-daemon sign-in            Sign in to Telia Sky in the browser (service must be running)
     sky-daemon stop               Ask a running service to exit (via systemd if managed)
 
 OPTIONS:
@@ -64,7 +65,7 @@ fn parse_args() -> Result<Args> {
             "--local-cloud" => {
                 args.local_cloud = Some(it.next().context("--local-cloud needs a folder")?.into())
             }
-            "run" | "status" | "stop" => args.command = a,
+            "run" | "status" | "stop" | "sign-in" => args.command = a,
             other => bail!("unknown argument {other}\n\n{HELP}"),
         }
     }
@@ -136,6 +137,39 @@ async fn run(args: Args) -> Result<()> {
     Ok(())
 }
 
+/// Run the same browser sign-in as the desktop app, from a terminal.
+async fn sign_in() -> Result<()> {
+    let paths = AppPaths::from_env();
+    let client = IpcClient::connect(&paths.daemon_socket())
+        .await
+        .context("the Sky daemon is not running (start it with `sky-daemon run`)")?;
+    let mut events = client.events();
+    tokio::spawn(async move {
+        while let Ok(ev) = events.recv().await {
+            if let sky_core::events::Event::AuthUrl { url } = ev {
+                println!(
+                    "Opening the sign-in page in your browser. If it doesn't open, visit:\n  {url}"
+                );
+                let _ = std::process::Command::new("xdg-open")
+                    .arg(&url)
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn();
+            }
+        }
+    });
+    let req = Request::Connect {
+        provider: sky_core::provider::Provider::TeliaSkyNo,
+    };
+    match client.request(&req).await {
+        Ok(account) => {
+            println!("Signed in: {}", serde_json::to_string_pretty(&account)?);
+            Ok(())
+        }
+        Err(e) => bail!("{}: {}\n({})", e.title, e.message, e.technical),
+    }
+}
+
 async fn status() -> Result<()> {
     let paths = AppPaths::from_env();
     let client = IpcClient::connect(&paths.daemon_socket())
@@ -161,6 +195,7 @@ async fn main() -> Result<()> {
     let args = parse_args()?;
     match args.command.as_str() {
         "status" => status().await,
+        "sign-in" => sign_in().await,
         "stop" => {
             // Under systemd, let systemd stop us so it doesn't restart us.
             let st = std::process::Command::new("systemctl")

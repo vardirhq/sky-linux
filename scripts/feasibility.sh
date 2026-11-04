@@ -46,18 +46,36 @@ answer() {
     config_type) echo traditional ;;
     config_traditional) echo telia_no ;;
     config_is_local) echo true ;;
-    *) echo "__default__" ;;
+    # Ask rclone to list the account's devices and mountpoints instead of
+    # silently using the default (Jotta/Archive), which may be empty.
+    config_non_standard) echo true ;;
+    *) echo "__ask__" ;;
   esac
+}
+# Show a question with its choices and read the answer from the terminal.
+ask() {
+  python3 - "$1" <<'PY' >/dev/tty
+import json, sys
+q = json.loads(sys.argv[1]); o = q.get("Option") or {}
+print(f"\n    {o.get('Name')}: {(o.get('Help') or '').splitlines()[0] if o.get('Help') else ''}")
+for e in o.get("Examples") or []:
+    print(f"      - {e.get('Value')!r}: {(e.get('Help') or '').splitlines()[0] if e.get('Help') else ''}")
+d = o.get("Default")
+print(f"    default: {str(d).lower() if isinstance(d, bool) else d!r}")
+PY
+  local def
+  def=$(python3 -c 'import json,sys; o=json.load(sys.stdin)["Option"] or {}; d=o.get("Default"); print(str(d).lower() if isinstance(d,bool) else (d or ""))' <<<"$1")
+  read -r -p "    choice [$def]: " reply </dev/tty
+  echo "${reply:-$def}"
 }
 for _ in $(seq 1 20); do
   state=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["State"])' <<<"$q")
   [[ -z "$state" ]] && break
   opt=$(python3 -c 'import json,sys; o=json.load(sys.stdin)["Option"] or {}; print(o.get("Name",""))' <<<"$q")
   ans=$(answer "$opt")
-  if [[ "$ans" == "__default__" ]]; then
-    ans=$(python3 -c 'import json,sys; o=json.load(sys.stdin)["Option"] or {}; d=o.get("Default"); print(str(d).lower() if isinstance(d,bool) else (d or ""))' <<<"$q")
-  fi
+  [[ "$ans" == "__ask__" ]] && ans=$(ask "$q")
   echo "    $opt → $ans"
+  [[ "$opt" == config_device || "$opt" == config_mountpoint ]] && echo "- Chose $opt = \`$ans\`" >> "$REPORT"
   q=$(rc config update "$REMOTE" --continue --state "$state" --result "$ans" --non-interactive)
 done
 if rc about "$REMOTE:" >/dev/null 2>&1; then pass "Browser sign-in with telia_no white-label"; else fail "sign-in"; exit 1; fi
@@ -65,11 +83,21 @@ if rc about "$REMOTE:" >/dev/null 2>&1; then pass "Browser sign-in with telia_no
 step "2/5 Account information"
 about=$(rc about "$REMOTE:" --json)
 echo "$about"
-pass "Quota: \`$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(f"{d.get("used",0)/1e9:.1f} GB used of {d.get("total",0)/1e9:.0f} GB")' <<<"$about")\`"
+pass "Quota: \`$(python3 -c '
+import json, sys
+d = json.load(sys.stdin); used = d.get("used", 0) / 1e9
+print(f"{used:.1f} GB used of {d[\"total\"] / 1e9:.0f} GB" if d.get("total") else f"{used:.1f} GB used, no total reported (unlimited plan?)")
+' <<<"$about")\`"
 
 step "3/5 Listing"
 n=$(rc lsjson "$REMOTE:" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
-pass "Listed root: $n entries"
+echo "    top-level entries (shown here only, not written to the report):"
+rc lsf "$REMOTE:" --max-depth 1 | head -20 | sed 's/^/      /'
+if [[ "$n" == 0 ]]; then
+  fail "Listed root: 0 entries — your files are probably in another device/mountpoint; re-run and pick a different one"
+else
+  pass "Listed root: $n entries"
+fi
 
 step "4/5 Upload / download round trip in $SCRATCH"
 head -c 5000000 /dev/urandom > "$WORK/probe.bin"
@@ -94,7 +122,9 @@ echo "    before: $before"
 python3 - "$CONF" "$REMOTE" <<'PY'
 import configparser, json, sys
 path, remote = sys.argv[1:]
-cp = configparser.RawConfigParser(); cp.read(path)
+cp = configparser.RawConfigParser()
+cp.optionxform = str  # keep key case: rclone needs "configVersion", not "configversion"
+cp.read(path)
 tok = json.loads(cp[remote]["token"]); tok["expiry"] = "2000-01-01T00:00:00Z"
 cp[remote]["token"] = json.dumps(tok)
 with open(path, "w") as f: cp.write(f)
