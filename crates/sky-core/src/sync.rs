@@ -186,8 +186,9 @@ impl SyncManager {
     }
 
     pub async fn create(&self, new: NewSyncPair) -> Result<SyncPair> {
-        self.db.account(new.account_id)?;
+        let account = self.db.account(new.account_id)?;
         let (local, remote) = self.validate(&new)?;
+        crate::areas::check_writable_target(&account, &remote)?;
         let id = Uuid::new_v4();
         let name = new
             .name

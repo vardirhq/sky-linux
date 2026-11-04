@@ -107,7 +107,14 @@ async fn run(args: Args) -> Result<()> {
     .await?;
     if let Some(dir) = &local_cloud {
         if core.accounts.list()?.is_empty() {
-            std::fs::create_dir_all(dir)?;
+            // Laid out like a Jottacloud device: one folder per storage area.
+            let areas: Vec<String> = sky_core::areas::JOTTA_AREAS
+                .iter()
+                .map(|a| a.to_string())
+                .collect();
+            for a in &areas {
+                std::fs::create_dir_all(dir.join(a))?;
+            }
             let dir = dir.canonicalize()?;
             core.client()
                 .create_remote(
@@ -117,7 +124,12 @@ async fn run(args: Args) -> Result<()> {
                 )
                 .await?;
             core.accounts
-                .adopt_remote(sky_core::provider::Provider::Jottacloud, "local-cloud")
+                .register_areas(
+                    sky_core::provider::Provider::TeliaSkyNo,
+                    "local-cloud",
+                    areas,
+                    sky_core::areas::AreaLayout::Subfolders,
+                )
                 .await?;
             tracing::warn!(dir = %dir.display(), "developer mode: using a local folder as the cloud");
         }

@@ -11,6 +11,7 @@
 //! ```
 
 pub mod accounts;
+pub mod areas;
 pub mod backup;
 pub mod db;
 pub mod error;

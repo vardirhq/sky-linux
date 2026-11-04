@@ -4,6 +4,7 @@
 
 import type { Transport } from "./api";
 import { SkyError } from "./api";
+import { canModify, canWriteIn } from "./areas";
 import type {
   Account,
   BackupJob,
@@ -28,7 +29,8 @@ const uid = () =>
 const account: Account = {
   id: "00000000-0000-4000-8000-000000000001",
   provider: "telia_sky_no",
-  remote: "sky-telia-no",
+  remote: "sky-telia-no-all",
+  areas: ["Archive", "Photos", "Shared", "Sync"],
   displayName: "Ola Nordmann",
   email: "ola@example.no",
   connectedAt: ago(60 * 24 * 30),
@@ -38,17 +40,23 @@ function entry(path: string, kind: "file" | "folder", size: number | null, modif
   return { name: path.split("/").pop()!, path, kind, size, modified, mimeType };
 }
 
+// Laid out like a real Telia Sky account: one top-level folder per storage
+// area (see crates/sky-core/src/areas.rs).
 const tree: Record<string, CloudEntry[]> = {
   "": [
-    entry("Telia Sky", "folder", 48 * GB, ago(3)),
-    entry("Photos", "folder", 1.4 * TB, "2025-01-22T20:18:00Z"),
-    entry("Documents", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
-    entry("Family Backup", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
-    entry("Work", "folder", 310 * GB, "2025-01-22T17:40:00Z"),
-    entry("Devices", "folder", 186 * GB, "2025-01-19T13:12:00Z"),
-    entry("Holiday plan.pdf", "file", 3.7 * MB, "2025-01-20T10:03:00Z", "application/pdf"),
-    entry("Norway.jpg", "file", 8.9 * MB, "2025-01-21T18:55:00Z", "image/jpeg"),
-    entry("Budget 2025.xlsx", "file", 1.2 * MB, "2025-01-19T09:36:00Z",
+    entry("Archive", "folder", null, ago(3)),
+    entry("Photos", "folder", null, ago(2)),
+    entry("Shared", "folder", null, "2024-11-02T10:00:00Z"),
+    entry("Sync", "folder", null, "2024-11-02T10:00:00Z"),
+  ],
+  Archive: [
+    entry("Archive/Telia Sky", "folder", 48 * GB, ago(3)),
+    entry("Archive/Documents", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
+    entry("Archive/Family Backup", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
+    entry("Archive/Work", "folder", 310 * GB, "2025-01-22T17:40:00Z"),
+    entry("Archive/Holiday plan.pdf", "file", 3.7 * MB, "2025-01-20T10:03:00Z", "application/pdf"),
+    entry("Archive/Norway.jpg", "file", 8.9 * MB, "2025-01-21T18:55:00Z", "image/jpeg"),
+    entry("Archive/Budget 2025.xlsx", "file", 1.2 * MB, "2025-01-19T09:36:00Z",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
   ],
   Photos: [
@@ -56,11 +64,13 @@ const tree: Record<string, CloudEntry[]> = {
     entry("Photos/2025", "folder", 580 * GB, "2025-01-22T20:18:00Z"),
     entry("Photos/IMG_4827.jpg", "file", 28.4 * MB, ago(2), "image/jpeg"),
   ],
-  Documents: [
-    entry("Documents/Project brief.pdf", "file", 12.1 * MB, ago(7), "application/pdf"),
-    entry("Documents/Tax 2024.pdf", "file", 2.2 * MB, "2025-01-10T11:00:00Z", "application/pdf"),
-    entry("Documents/Notes.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
+  "Archive/Documents": [
+    entry("Archive/Documents/Project brief.pdf", "file", 12.1 * MB, ago(7), "application/pdf"),
+    entry("Archive/Documents/Tax 2024.pdf", "file", 2.2 * MB, "2025-01-10T11:00:00Z", "application/pdf"),
+    entry("Archive/Documents/Notes.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
   ],
+  Shared: [],
+  Sync: [],
 };
 
 function syncPair(p: Partial<SyncPair>): SyncPair {
@@ -69,7 +79,7 @@ function syncPair(p: Partial<SyncPair>): SyncPair {
     accountId: account.id,
     name: "Telia Sky",
     localPath: "/home/ola/Telia Sky",
-    remotePath: "Telia Sky",
+    remotePath: "Archive/Telia Sky",
     enabled: true,
     maxDeletePercent: 50,
     pollMinutes: 5,
@@ -86,9 +96,9 @@ function syncPair(p: Partial<SyncPair>): SyncPair {
 const syncPairs: SyncPair[] = [syncPair({ id: "00000000-0000-4000-8000-000000000201" })];
 
 const backups: BackupJob[] = [
-  { name: "Family Backup", local: "/home/ola/Family", remote: "Family Backup" },
-  { name: "Pictures", local: "/home/ola/Pictures", remote: "Photos" },
-  { name: "Documents", local: "/home/ola/Documents", remote: "Documents" },
+  { name: "Family Backup", local: "/home/ola/Family", remote: "Archive/Family Backup" },
+  { name: "Pictures", local: "/home/ola/Pictures", remote: "Archive/Pictures" },
+  { name: "Documents", local: "/home/ola/Documents", remote: "Archive/Documents" },
 ].map((b, i) => ({
   id: `00000000-0000-4000-8000-00000000010${i}`,
   accountId: account.id,
@@ -129,7 +139,7 @@ const transfers: Transfer[] = [
   transfer({
     direction: "upload",
     source: "/home/ola/Pictures",
-    destination: "Photos",
+    destination: "Archive/Pictures",
     state: "running",
     bytesTotal: 15 * GB,
     bytesDone: 10.8 * GB,
@@ -139,10 +149,10 @@ const transfers: Transfer[] = [
     startedAt: ago(14),
     finishedAt: null,
   }),
-  transfer({ source: "/home/ola/Pictures/IMG_4827.jpg", destination: "Photos/IMG_4827.jpg", bytesTotal: 28.4 * MB, bytesDone: 28.4 * MB, startedAt: ago(2), finishedAt: ago(2) }),
-  transfer({ direction: "download", source: "Documents/Project brief.pdf", destination: "/home/ola/Downloads/Project brief.pdf", bytesTotal: 12.1 * MB, bytesDone: 12.1 * MB, startedAt: ago(7), finishedAt: ago(7) }),
-  transfer({ source: "/home/ola/Work/slides.odp", destination: "Work/slides.odp", bytesTotal: 540 * MB, bytesDone: 540 * MB, startedAt: ago(40), finishedAt: ago(38) }),
-  transfer({ source: "/home/ola/Work/video.mp4", destination: "Work/video.mp4", bytesTotal: 520 * MB, bytesDone: 520 * MB, startedAt: ago(55), finishedAt: ago(50) }),
+  transfer({ source: "/home/ola/Pictures/IMG_4827.jpg", destination: "Archive/Pictures/IMG_4827.jpg", bytesTotal: 28.4 * MB, bytesDone: 28.4 * MB, startedAt: ago(2), finishedAt: ago(2) }),
+  transfer({ direction: "download", source: "Archive/Documents/Project brief.pdf", destination: "/home/ola/Downloads/Project brief.pdf", bytesTotal: 12.1 * MB, bytesDone: 12.1 * MB, startedAt: ago(7), finishedAt: ago(7) }),
+  transfer({ source: "/home/ola/Work/slides.odp", destination: "Archive/Work/slides.odp", bytesTotal: 540 * MB, bytesDone: 540 * MB, startedAt: ago(40), finishedAt: ago(38) }),
+  transfer({ source: "/home/ola/Work/video.mp4", destination: "Archive/Work/video.mp4", bytesTotal: 520 * MB, bytesDone: 520 * MB, startedAt: ago(55), finishedAt: ago(50) }),
   transfer({ direction: "download", source: "Photos/2024/summer.zip", destination: "/home/ola/Downloads/summer.zip", bytesTotal: 568 * MB, bytesDone: 568 * MB, startedAt: ago(80), finishedAt: ago(78) }),
 ];
 
@@ -152,6 +162,21 @@ const history: HistoryEntry[] = [
   { id: 2, at: ago(60), event: { type: "backupFinished", data: backups[0] } },
   { id: 1, at: ago(60 * 24 * 30), event: { type: "accountConnected", data: account } },
 ];
+
+/** Refuse writes like Sky Core does (crates/sky-core/src/areas.rs). */
+function refuse(path: string): never {
+  const area = path.split("/")[0];
+  const readOnly = area === "Photos" || area === "Shared";
+  throw new SkyError({
+    code: "invalid",
+    title: "Something isn't right",
+    message: readOnly ? `Sky Linux can't change files in ${area} yet.` : "Choose a folder inside one of your storage areas.",
+    action: "none",
+    technical: "",
+    rule: readOnly ? "area_read_only" : "area_root",
+    params: { area },
+  });
+}
 
 export class DemoTransport implements Transport {
   private listeners = new Set<(e: SkyEvent) => void>();
@@ -167,7 +192,7 @@ export class DemoTransport implements Transport {
             id: "00000000-0000-4000-8000-000000000202",
             name: "Studier",
             localPath: "/home/ola/Studier",
-            remotePath: "Studier",
+            remotePath: "Archive/Studier",
             state: { kind: "needsReview", reason: "too_many_deletes" },
             lastSync: ago(90),
             lastSummary: null,
@@ -267,11 +292,14 @@ export class DemoTransport implements Transport {
       case "files.usage":
         return { used: 2.8 * TB, total: 5 * TB, free: 2.2 * TB, trashed: 12 * GB };
       case "files.mkdir": {
+        if (!canModify(account, p.path)) refuse(p.path);
         const parent = p.path.includes("/") ? p.path.slice(0, p.path.lastIndexOf("/")) : "";
         (tree[parent] ??= []).push(entry(p.path, "folder", null, now()));
         return null;
       }
       case "files.move": {
+        if (!canModify(account, p.from)) refuse(p.from);
+        if (!canModify(account, p.to)) refuse(p.to);
         for (const list of Object.values(tree)) {
           const e = list.find((x) => x.path === p.from);
           if (e) {
@@ -282,11 +310,13 @@ export class DemoTransport implements Transport {
         return null;
       }
       case "files.delete":
+        if (!canModify(account, p.path)) refuse(p.path);
         for (const k of Object.keys(tree)) tree[k] = tree[k].filter((e) => e.path !== p.path);
         return null;
       case "transfers.upload":
       case "transfers.download": {
         const up = method === "transfers.upload";
+        if (up && !canWriteIn(account, p.remoteDir ?? "")) refuse(p.remoteDir ?? "");
         const items: string[] = up ? p.localPaths : p.entries.map((e: CloudEntry) => e.path);
         const created = items.map((src) => {
           const name = src.split("/").pop()!;

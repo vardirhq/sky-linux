@@ -8,6 +8,7 @@ use chrono::{Duration as ChronoDuration, Utc};
 use uuid::Uuid;
 
 use crate::accounts::AccountManager;
+use crate::areas::{area_of, check_writable, check_writable_target};
 use crate::backup::BackupManager;
 use crate::db::Database;
 use crate::error::{CoreError, Result};
@@ -244,6 +245,7 @@ impl SkyCore {
     pub async fn mkdir(&self, account: Option<Uuid>, path: &str) -> Result<()> {
         let account = self.account_or_default(account)?;
         let path = clean_remote(path)?;
+        check_writable(&account, &path)?;
         self.client()
             .mkdir(&remote_fs(&account.remote, ""), &path)
             .await?;
@@ -261,6 +263,14 @@ impl SkyCore {
     ) -> Result<()> {
         let account = self.account_or_default(account)?;
         let (from, to) = (clean_remote(from)?, clean_remote(to)?);
+        check_writable(&account, &from)?;
+        check_writable(&account, &to)?;
+        if area_of(&account, &from) != area_of(&account, &to) {
+            return Err(CoreError::rule(
+                "move_between_areas",
+                "Files can't be moved between storage areas. Download and upload them instead.",
+            ));
+        }
         if to == from || to.starts_with(&format!("{from}/")) {
             return Err(CoreError::rule(
                 "move_into_self",
@@ -305,6 +315,7 @@ impl SkyCore {
     pub async fn delete_file(&self, account: Option<Uuid>, path: &str) -> Result<()> {
         let account = self.account_or_default(account)?;
         let path = clean_remote(path)?;
+        check_writable(&account, &path)?;
         self.client()
             .delete_file(&remote_fs(&account.remote, ""), &path)
             .await?;
@@ -322,6 +333,7 @@ impl SkyCore {
     ) -> Result<Vec<Transfer>> {
         let account = self.account_or_default(account)?;
         let remote_dir = remote_dir.trim_matches('/').to_string();
+        check_writable_target(&account, &remote_dir)?;
         let mut out = Vec::new();
         for path in local {
             let spec = if path.is_dir() {

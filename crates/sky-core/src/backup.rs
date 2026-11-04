@@ -116,8 +116,9 @@ impl BackupManager {
     }
 
     pub async fn create(&self, new: NewBackupJob) -> Result<BackupJob> {
-        self.db.account(new.account_id)?;
+        let account = self.db.account(new.account_id)?;
         let local = validate(&new.local_path, &new.remote_path)?;
+        crate::areas::check_writable_target(&account, &new.remote_path)?;
         let name = new
             .name
             .filter(|n| !n.trim().is_empty())

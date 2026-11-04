@@ -118,6 +118,12 @@ export const nb: Dict = {
     syncReview: "Synkroniseringen trenger din vurdering",
     syncFailed: "Synkroniseringen prøver igjen",
   },
+  areas: {
+    Archive: "Arkiv",
+    Photos: "Bilder",
+    Shared: "Delt",
+    Sync: "Synk",
+  },
   files: {
     back: "Tilbake",
     forward: "Fremover",
@@ -157,6 +163,8 @@ export const nb: Dict = {
     protectedHint: "Dekket av en automatisk sikkerhetskopi",
     inCloud: "I skyen",
     inCloudHint: "Trygt lagret i skyen",
+    readOnly: "Kun lesing",
+    readOnlyHint: "Sky Linux kan vise og laste ned disse filene, men kan ikke endre dem ennå",
     synced: "Synkronisert",
     syncedHint: "Holdes lik med en mappe på denne datamaskinen",
     toast: {
@@ -402,6 +410,10 @@ export const nb: Dict = {
     invalid_path: "«{path}» er ikke en gyldig bane i skyen.",
     no_account: "Ingen skykonto er tilkoblet ennå.",
     sign_in_in_progress: "En innlogging pågår allerede.",
+    area_root: "Velg en mappe inne i et av lagringsområdene dine, for eksempel Arkiv.",
+    area_read_only: "Sky Linux kan ikke endre filer i {area} ennå. Du kan fortsatt bla gjennom og laste dem ned.",
+    unknown_area: "«{area}» er ikke et av lagringsområdene dine.",
+    move_between_areas: "Filer kan ikke flyttes mellom lagringsområder. Last dem ned og opp i stedet.",
     sign_in_port_busy: "Port {port} er i bruk, så innloggingssiden kan ikke komme tilbake til Sky Linux. Lukk andre programmer som logger inn, og prøv igjen.",
     sign_in_timeout: "Innloggingen tok for lang tid. Prøv igjen.",
     sign_in_cancelled: "Innloggingen ble avbrutt. Ingenting er endret.",

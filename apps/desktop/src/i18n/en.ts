@@ -118,6 +118,13 @@ export const en = {
     syncReview: "Sync needs your review",
     syncFailed: "Sync will retry",
   },
+  // Storage areas of a Jottacloud account (top-level folders).
+  areas: {
+    Archive: "Archive",
+    Photos: "Photos",
+    Shared: "Shared",
+    Sync: "Sync",
+  },
   files: {
     back: "Back",
     forward: "Forward",
@@ -157,6 +164,8 @@ export const en = {
     protectedHint: "Covered by an automatic backup",
     inCloud: "In cloud",
     inCloudHint: "Stored safely in the cloud",
+    readOnly: "Read-only",
+    readOnlyHint: "Sky Linux can show and download these files, but can't change them yet",
     synced: "Synced",
     syncedHint: "Kept in step with a folder on this computer",
     toast: {
@@ -404,6 +413,10 @@ export const en = {
     invalid_path: "'{path}' is not a valid cloud path.",
     no_account: "No cloud account is connected yet.",
     sign_in_in_progress: "A sign-in is already in progress.",
+    area_root: "Choose a folder inside one of your storage areas, such as Archive.",
+    area_read_only: "Sky Linux can't change files in {area} yet. You can still browse and download them.",
+    unknown_area: "“{area}” is not one of your storage areas.",
+    move_between_areas: "Files can't be moved between storage areas. Download and upload them instead.",
     sign_in_port_busy: "Port {port} is in use, so the sign-in page can't return to Sky Linux. Close other apps that are signing in and try again.",
     sign_in_timeout: "Sign-in took too long. Please try again.",
     sign_in_cancelled: "Sign-in was cancelled. Nothing was changed.",

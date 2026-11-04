@@ -103,6 +103,10 @@ const MIGRATIONS: &[&str] = &[
         UNIQUE(account_id, remote_path)
     );
     "#,
+    // 3: storage areas (Jottacloud mountpoints) per account.
+    r#"
+    ALTER TABLE accounts ADD COLUMN areas TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 #[allow(dead_code)] // used by tests and diagnostics
