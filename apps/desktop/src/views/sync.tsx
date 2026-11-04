@@ -4,6 +4,7 @@ import { api, homeDir, openFolder, pickFolders } from "@/lib/api";
 import { keys, useAccounts, useAction, useHome, useSyncPairs } from "@/lib/hooks";
 import { PROVIDER_NAMES, type SyncPair } from "@/lib/types";
 import { cn, tildePath, timeAgo } from "@/lib/utils";
+import { defaultRemote, displayPath } from "@/lib/areas";
 import { localizeError, useT } from "@/i18n";
 import { EmptyState } from "@/components/file-browser";
 import { Badge } from "@/components/ui/badge";
@@ -78,6 +79,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
   const t = useT();
   const [confirm, setConfirm] = useState(false);
   const home = useHome().data;
+  const account = useAccounts().data?.[0];
   const toggle = useAction((enabled: boolean) => api.setSyncEnabled(pair.id, enabled), [keys.sync]);
   const run = useAction(() => api.runSync(pair.id), [keys.sync]);
   const remove = useAction(() => api.deleteSync(pair.id), [keys.sync], t("sync.toast.removed"));
@@ -96,7 +98,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
         <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg bg-surface-muted px-3 py-2.5">
           <p className="truncate" title={pair.localPath}>{tildePath(pair.localPath, home)}</p>
           <ArrowLeftRight className="size-4 text-fg-subtle" />
-          <p className="truncate text-right">{provider} / {pair.remotePath}</p>
+          <p className="truncate text-right">{provider} / {displayPath(account, pair.remotePath)}</p>
         </div>
         <ReviewPanel pair={pair} />
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-fg-muted">
@@ -162,11 +164,11 @@ export function SyncView() {
 
   const startDefault = async () => {
     const home = await homeDir();
-    setDraft({ local: `${home}/${DEFAULT_SYNC_FOLDER}`, remote: DEFAULT_SYNC_FOLDER, create: true });
+    setDraft({ local: `${home}/${DEFAULT_SYNC_FOLDER}`, remote: defaultRemote(account, DEFAULT_SYNC_FOLDER), create: true });
   };
   const choose = async () => {
     const [p] = await pickFolders(t("sync.chooseLocal"));
-    if (p) setDraft({ local: p, remote: p.split("/").filter(Boolean).pop() ?? DEFAULT_SYNC_FOLDER, create: false });
+    if (p) setDraft({ local: p, remote: defaultRemote(account, p.split("/").filter(Boolean).pop() ?? DEFAULT_SYNC_FOLDER), create: false });
   };
 
   return (

@@ -25,6 +25,7 @@ import { Switch } from "@/components/ui/switch";
 import { ActivityIcon, describeHistory } from "./dashboard";
 import { LOCALES, isLocale, localizeError, t as tr, useLocale, useT } from "@/i18n";
 import { PROVIDER_NAMES } from "@/lib/types";
+import { defaultRemote, displayPath } from "@/lib/areas";
 
 function useProvider() {
   const a = useAccounts().data?.[0];
@@ -77,7 +78,7 @@ export function BackupsView() {
     const [p] = await pickFolders(t("backups.choose"));
     if (!p) return;
     setAdding(p);
-    setRemote(`Backup/${p.split("/").filter(Boolean).pop() ?? "Folder"}`);
+    setRemote(defaultRemote(account, `Backup/${p.split("/").filter(Boolean).pop() ?? "Folder"}`));
   };
 
   return (
@@ -107,7 +108,7 @@ export function BackupsView() {
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <p className="truncate text-fg-muted" title={b.localPath}>{b.localPath}</p>
-                <p className="truncate">→ {provider} / {b.remotePath}</p>
+                <p className="truncate">→ {provider} / {displayPath(account, b.remotePath)}</p>
                 <div className="flex flex-wrap gap-2 pt-1">
                   <Badge>{scheduleLabel(b.schedule)}</Badge>
                   {b.lastError ? (

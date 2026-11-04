@@ -18,6 +18,7 @@ import { useMemo } from "react";
 import { api, pickFiles, pickFolders } from "@/lib/api";
 import { keys, useAction, useAccounts, useBackups, useHistory, useSyncPairs, useTransfers, useUsage } from "@/lib/hooks";
 import { SyncStateBadge } from "./sync";
+import { canWriteIn, DEFAULT_AREA, hasAreas } from "@/lib/areas";
 import type { HistoryEntry } from "@/lib/types";
 import { cn, formatBytes, greeting, percent, timeAgo } from "@/lib/utils";
 import { useUi } from "@/store/ui";
@@ -60,7 +61,10 @@ export function Dashboard() {
   const activeBackups = backups.filter((b) => b.enabled);
   const healthy = activeBackups.every((b) => !b.lastError) && reviewing.length === 0;
 
-  const upload = useAction((p: string[]) => api.upload(p, ui.cwd), [keys.transfers], t("files.toast.uploadStarted"));
+  // Uploads go to the open folder, or to Archive when it can't take files
+  // (the list of storage areas, or a read-only area such as Photos).
+  const uploadDir = canWriteIn(account, ui.cwd) ? ui.cwd : hasAreas(account) ? DEFAULT_AREA : ui.cwd;
+  const upload = useAction((p: string[]) => api.upload(p, uploadDir), [keys.transfers], t("files.toast.uploadStarted"));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-6">

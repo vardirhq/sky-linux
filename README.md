@@ -16,6 +16,7 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 | --- | --- |
 | Telia Sky sign-in (browser OAuth via rclone's `telia_no` white-label) | Implemented; still needs testing with a real account |
 | Browse, search, rename, move, create folders, delete files (to trash) | ✅ tested end-to-end |
+| All storage areas (Arkiv, Bilder, Delt, Synk) as top-level folders; Bilder and Delt read-only for now | ✅ tested end-to-end (on the real account, all files were in Bilder) |
 | Uploads & downloads with live progress, speed and ETA; cancel | ✅ |
 | Downloads never overwrite local files (`name (1).ext`) | ✅ |
 | Upload-only backups (on change / interval / manual); never delete remote files | ✅ |

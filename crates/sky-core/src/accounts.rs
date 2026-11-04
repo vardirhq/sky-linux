@@ -10,6 +10,7 @@ use std::sync::Arc;
 use chrono::Utc;
 use uuid::Uuid;
 
+use crate::areas::{combine_upstreams, AreaLayout, JOTTA_AREAS};
 use crate::db::Database;
 use crate::error::{CoreError, Result};
 use crate::events::{Event, EventBus};
@@ -20,6 +21,11 @@ use crate::rclone::{remote_fs, JottacloudWithToken, RcloneSupervisor};
 use serde_json::json;
 
 pub const RCLONE_BACKEND: &str = "jottacloud";
+const COMBINED_SUFFIX: &str = "-all";
+
+fn combined_name(base_remote: &str) -> String {
+    format!("{base_remote}{COMBINED_SUFFIX}")
+}
 
 #[derive(Clone)]
 pub struct AccountManager {
@@ -97,21 +103,50 @@ impl AccountManager {
         let token = sign_in.finish(lang, provider.display_name()).await?;
 
         // 2. Hand the token to rclone, which owns and refreshes it.
-        let remote = provider.remote_name();
-        self.create_remote_from_token(provider, &remote, &token)
+        let base = provider.remote_name();
+        self.create_remote_from_token(provider, &base, &token)
             .await?;
 
         // 3. Prove the token works before declaring success.
         let client = self.rclone.client();
-        if let Err(e) = client.about(&remote_fs(&remote, "")).await {
-            let _ = client.delete_remote(&remote).await;
+        if let Err(e) = client.about(&remote_fs(&base, "")).await {
+            let _ = client.delete_remote(&base).await;
             return Err(e);
         }
 
+        // 4. One tree over all storage areas (Archive, Photos, …).
+        let areas: Vec<String> = JOTTA_AREAS.iter().map(|a| a.to_string()).collect();
+        self.register_areas(provider, &base, areas, AreaLayout::Mountpoints)
+            .await
+    }
+
+    /// Join the storage areas of `base_remote` into one `combine` remote and
+    /// record the account. Also used by tests and the daemon's developer
+    /// mode with [`AreaLayout::Subfolders`] on a local folder.
+    pub async fn register_areas(
+        &self,
+        provider: Provider,
+        base_remote: &str,
+        areas: Vec<String>,
+        layout: AreaLayout,
+    ) -> Result<Account> {
+        let client = self.rclone.client();
+        let combined = combined_name(base_remote);
+        if client.list_remotes().await?.contains(&combined) {
+            client.delete_remote(&combined).await?;
+        }
+        client
+            .create_remote(
+                &combined,
+                "combine",
+                json!({ "upstreams": combine_upstreams(base_remote, &areas, layout) }),
+            )
+            .await?;
         let account = Account {
             id: Uuid::new_v4(),
             provider,
-            remote,
+            remote: combined,
+            areas,
             display_name: None,
             email: None,
             connected_at: Utc::now(),
@@ -169,6 +204,7 @@ impl AccountManager {
             id: Uuid::new_v4(),
             provider,
             remote: remote.to_string(),
+            areas: vec![],
             display_name: None,
             email: None,
             connected_at: Utc::now(),
@@ -183,8 +219,20 @@ impl AccountManager {
     pub async fn disconnect(&self, id: Uuid) -> Result<()> {
         let account = self.db.account(id)?;
         let client = self.rclone.client();
-        if client.list_remotes().await?.contains(&account.remote) {
-            client.delete_remote(&account.remote).await?;
+        let remotes = client.list_remotes().await?;
+        // The combined remote and the signed-in remote it is built on.
+        let base = (!account.areas.is_empty())
+            .then(|| {
+                account
+                    .remote
+                    .strip_suffix(COMBINED_SUFFIX)
+                    .map(str::to_owned)
+            })
+            .flatten();
+        for r in std::iter::once(account.remote.clone()).chain(base) {
+            if remotes.contains(&r) {
+                client.delete_remote(&r).await?;
+            }
         }
         self.db.delete_account(id)?;
         let ev = Event::AccountRemoved { id };

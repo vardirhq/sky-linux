@@ -13,8 +13,13 @@ use crate::provider::Provider;
 pub struct Account {
     pub id: Uuid,
     pub provider: Provider,
-    /// rclone remote name, e.g. `sky-telia-no`.
+    /// rclone remote Sky Core works with, e.g. `sky-telia-no-all` (a
+    /// `combine` remote over all storage areas) or a plain remote.
     pub remote: String,
+    /// Storage areas, the top-level folders of `remote` (see `crate::areas`).
+    /// Empty for plain remotes, where any path may be written.
+    #[serde(default)]
+    pub areas: Vec<String>,
     pub display_name: Option<String>,
     pub email: Option<String>,
     pub connected_at: DateTime<Utc>,

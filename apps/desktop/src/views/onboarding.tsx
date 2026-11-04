@@ -3,6 +3,7 @@ import { ArrowLeftRight, Check, CheckCircle2, Cloud, FolderPlus, Loader2, Shield
 import { useQueryClient } from "@tanstack/react-query";
 import { api, homeDir, openExternal, pickFolders, SkyError } from "@/lib/api";
 import { DEFAULT_SYNC_FOLDER } from "./sync";
+import { defaultRemote, displayPath } from "@/lib/areas";
 import { Switch } from "@/components/ui/switch";
 import { useAccounts } from "@/lib/hooks";
 import type { Account } from "@/lib/types";
@@ -49,11 +50,11 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     setError(null);
     try {
       if (syncFolder && syncPath) {
-        await api.createSync({ accountId: account!.id, localPath: syncPath, remotePath: DEFAULT_SYNC_FOLDER, createLocal: true });
+        await api.createSync({ accountId: account!.id, localPath: syncPath, remotePath: defaultRemote(account, DEFAULT_SYNC_FOLDER), createLocal: true });
       }
       for (const f of folders) {
         const name = f.split("/").filter(Boolean).pop() ?? "Folder";
-        await api.createBackup({ accountId: account!.id, localPath: f, remotePath: `Backup/${name}` });
+        await api.createBackup({ accountId: account!.id, localPath: f, remotePath: defaultRemote(account, `Backup/${name}`) });
       }
       setStep(3);
     } catch (e) {
@@ -125,7 +126,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <ArrowLeftRight className="mt-0.5 size-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <p className="font-semibold">{t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })}</p>
-                <p className="text-fg-muted">{t("onboarding.syncOptionBody", { path: tildePath(syncPath, syncPath.slice(0, syncPath.lastIndexOf("/"))), remote: DEFAULT_SYNC_FOLDER })}</p>
+                <p className="text-fg-muted">{t("onboarding.syncOptionBody", { path: tildePath(syncPath, syncPath.slice(0, syncPath.lastIndexOf("/"))), remote: displayPath(account, defaultRemote(account, DEFAULT_SYNC_FOLDER)) })}</p>
               </div>
               <Switch label={t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })} checked={syncFolder} onChange={setSyncFolder} />
             </div>

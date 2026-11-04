@@ -10,6 +10,7 @@ import {
   Download,
   FolderPlus,
   LayoutGrid,
+  Lock,
   List,
   MoreVertical,
   Pencil,
@@ -33,6 +34,7 @@ import { Card } from "./ui/card";
 import { Dialog } from "./ui/dialog";
 import { Menu } from "./ui/menu";
 import { FileIcon } from "./file-icon";
+import { areaLabel, canModify, canWriteIn, isAreaRoot, READ_ONLY_AREAS } from "@/lib/areas";
 
 type SortKey = "name" | "size" | "modified";
 type EntryStatus = "syncing" | "synced" | "protected" | "cloud";
@@ -156,6 +158,11 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
   };
 
   const crumbs = ui.cwd ? ui.cwd.split("/") : [];
+  // Storage areas (Archive, Photos, …) show translated names; Photos and
+  // Shared are read-only, so their write actions are hidden.
+  const writable = canWriteIn(account, ui.cwd);
+  const label = (e: CloudEntry) => (isAreaRoot(account, e.path) ? areaLabel(account, e.name) : e.name);
+  const readOnlyArea = (e: CloudEntry) => isAreaRoot(account, e.path) && READ_ONLY_AREAS.includes(e.name);
   const header = (key: SortKey, label: string, cls?: string) => (
     <th className={cn("py-2.5 text-left font-medium", cls)}>
       <button
@@ -199,12 +206,17 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
                   className={cn("truncate hover:text-accent", i === crumbs.length - 1 && "font-semibold")}
                   onClick={() => ui.navigate(crumbs.slice(0, i + 1).join("/"))}
                 >
-                  {c}
+                  {i === 0 ? areaLabel(account, c) : c}
                 </button>
               </span>
             ))
           )}
         </nav>
+        {!writable && ui.cwd && !searching && (
+          <Badge title={t("files.readOnlyHint")}>
+            <Lock /> {t("files.readOnly")}
+          </Badge>
+        )}
         {selected.length > 0 && (
           <Button variant="secondary" size="sm" onClick={() => download.mutate(selected)}>
             <Download /> {t("files.downloadN", { count: selected.length })}
@@ -233,8 +245,8 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
             </Button>
           )}
           items={[
-            { label: t("files.uploadFiles"), icon: <Upload />, onSelect: async () => upload.mutate(await pickFiles(t("files.uploadTo", { provider }))) },
-            { label: t("files.newFolder"), icon: <FolderPlus />, onSelect: () => setNewFolder(true) },
+            { label: t("files.uploadFiles"), icon: <Upload />, disabled: !writable, onSelect: async () => upload.mutate(await pickFiles(t("files.uploadTo", { provider }))) },
+            { label: t("files.newFolder"), icon: <FolderPlus />, disabled: !writable, onSelect: () => setNewFolder(true) },
             { label: t("files.refresh"), icon: <RefreshCw />, onSelect: () => qc.fetchQuery({ queryKey: keys.list(ui.cwd), queryFn: () => api.list(ui.cwd, true) }) },
           ]}
         />
@@ -262,8 +274,8 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
                   ui.selection.has(e.path) && "border-accent bg-accent-soft",
                 )}
               >
-                <FileIcon entry={e} className="size-14 p-3" />
-                <span className="line-clamp-2 text-sm">{e.name}</span>
+                <FileIcon entry={e} area={isAreaRoot(account, e.path) ? e.name : undefined} className="size-14 p-3" />
+                <span className="line-clamp-2 text-sm">{label(e)}</span>
                 <span className="text-xs text-fg-subtle">{formatBytes(e.size)}</span>
               </button>
             ))}
@@ -309,14 +321,20 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
                   </td>
                   <td className="py-1.5">
                     <button className="flex items-center gap-3 text-left" onClick={() => open(e)}>
-                      <FileIcon entry={e} />
-                      <span className="truncate">{e.name}</span>
+                      <FileIcon entry={e} area={isAreaRoot(account, e.path) ? e.name : undefined} />
+                      <span className="truncate">{label(e)}</span>
                     </button>
                   </td>
                   <td className="text-fg-muted tabular-nums">{formatBytes(e.size)}</td>
                   <td className="text-fg-muted tabular-nums">{formatDate(e.modified)}</td>
                   <td>
-                    <StatusBadge status={entryStatus(e, backups, transfers, syncPairs)} />
+                    {readOnlyArea(e) ? (
+                      <Badge title={t("files.readOnlyHint")}>
+                        <Lock /> {t("files.readOnly")}
+                      </Badge>
+                    ) : (
+                      <StatusBadge status={entryStatus(e, backups, transfers, syncPairs)} />
+                    )}
                   </td>
                   <td className="pr-2">
                     <Menu
@@ -327,8 +345,10 @@ export function FileBrowser({ compact = false, limit }: { compact?: boolean; lim
                       )}
                       items={[
                         { label: t("dashboard.download"), icon: <Download />, onSelect: () => download.mutate([e]) },
-                        { label: t("files.rename"), icon: <Pencil />, onSelect: () => setRenaming(e) },
-                        ...(e.kind === "file"
+                        ...(canModify(account, e.path)
+                          ? [{ label: t("files.rename"), icon: <Pencil />, onSelect: () => setRenaming(e) }]
+                          : []),
+                        ...(e.kind === "file" && canModify(account, e.path)
                           ? [{ label: t("files.delete"), icon: <Trash2 />, danger: true, onSelect: () => setConfirmDelete(e) }]
                           : []),
                       ]}

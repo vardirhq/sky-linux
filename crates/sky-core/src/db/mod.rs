@@ -101,6 +101,7 @@ impl Database {
             id: r.get("id")?,
             provider: from_json(&format!("\"{}\"", r.get::<_, String>("provider")?))?,
             remote: r.get("remote")?,
+            areas: from_json(&r.get::<_, String>("areas")?)?,
             display_name: r.get("display_name")?,
             email: r.get("email")?,
             connected_at: r.get("connected_at")?,
@@ -109,17 +110,19 @@ impl Database {
 
     pub fn insert_account(&self, a: &Account) -> Result<()> {
         let provider = to_json(&a.provider)?.trim_matches('"').to_string();
+        let areas = to_json(&a.areas)?;
         self.with(|c| {
             c.execute(
-                "INSERT INTO accounts(id, provider, remote, display_name, email, connected_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                "INSERT INTO accounts(id, provider, remote, display_name, email, connected_at, areas)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                 params![
                     a.id,
                     provider,
                     a.remote,
                     a.display_name,
                     a.email,
-                    a.connected_at
+                    a.connected_at,
+                    areas
                 ],
             )?;
             Ok(())
@@ -536,6 +539,7 @@ mod tests {
             id: Uuid::new_v4(),
             provider: Provider::TeliaSkyNo,
             remote: "sky-telia-no".into(),
+            areas: vec!["Archive".into(), "Photos".into()],
             display_name: Some("Ola Nordmann".into()),
             email: None,
             connected_at: Utc::now(),

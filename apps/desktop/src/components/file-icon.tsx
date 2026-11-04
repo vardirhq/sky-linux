@@ -1,4 +1,7 @@
 import {
+  Archive as ArchiveIcon,
+  Images,
+  RefreshCw,
   FileArchive,
   FileAudio,
   FileImage,
@@ -16,8 +19,24 @@ import { cn } from "@/lib/utils";
 
 const ext = (name: string) => name.toLowerCase().split(".").pop() ?? "";
 
-export function FileIcon({ entry, className }: { entry: CloudEntry; className?: string }) {
+/** Icons for the storage areas of a Jottacloud account. */
+const AREA_GLYPHS: Record<string, typeof Folder> = {
+  Archive: ArchiveIcon,
+  Photos: Images,
+  Shared: Users,
+  Sync: RefreshCw,
+};
+
+export function FileIcon({ entry, area, className }: { entry: CloudEntry; area?: string; className?: string }) {
   const base = cn("size-9 shrink-0 rounded-lg p-1.5", className);
+  if (area) {
+    const Glyph = AREA_GLYPHS[area] ?? Folder;
+    return (
+      <span className={cn(base, "bg-accent text-accent-fg")} aria-hidden>
+        <Glyph className="size-full" strokeWidth={1.8} />
+      </span>
+    );
+  }
   if (entry.kind === "folder") {
     const n = entry.name.toLowerCase();
     const Glyph = n.includes("family") ? Users : n === "devices" ? Laptop : n === "photos" ? FolderHeart : Folder;

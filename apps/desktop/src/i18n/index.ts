@@ -85,6 +85,13 @@ export function intlLocale(): string {
   return INTL_LOCALE[useLocale.getState().locale];
 }
 
+/** Show storage-area names in the user's language ("Photos" → "Bilder"). */
+function translateParams(d: Dict, params?: Record<string, string>): Record<string, string> | undefined {
+  if (!params?.area) return params;
+  const name = (d.areas as Record<string, string>)[params.area];
+  return name ? { ...params, area: name } : params;
+}
+
 /** Localize an error from Sky Core using its stable code / rule. */
 export function localizeError(e: UserError): { title: string; message: string } {
   const locale = useLocale.getState().locale;
@@ -93,6 +100,6 @@ export function localizeError(e: UserError): { title: string; message: string } 
   const rule = e.rule ? (d.rules as Record<string, string>)[e.rule] : undefined;
   return {
     title: byCode?.title ?? e.title,
-    message: rule ? format(rule, e.params, locale) : (byCode?.message ?? e.message),
+    message: rule ? format(rule, translateParams(d, e.params), locale) : (byCode?.message ?? e.message),
   };
 }

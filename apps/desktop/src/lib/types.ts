@@ -30,6 +30,8 @@ export interface Account {
   id: string;
   provider: Provider;
   remote: string;
+  /** Storage areas (top-level folders), e.g. Archive, Photos, Shared, Sync. */
+  areas: string[];
   displayName: string | null;
   email: string | null;
   connectedAt: string;
