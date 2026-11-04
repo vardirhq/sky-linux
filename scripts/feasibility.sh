@@ -124,18 +124,21 @@ while read -r mp; do
 done < "$WORK/mountpoints"
 
 step "4/5 Upload / download round trip in $SCRATCH"
-head -c 5000000 /dev/urandom > "$WORK/probe.bin"
-printf 'Sky Linux feasibility ✓ æøå\n' > "$WORK/unicode æøå.txt"
+# Uploads live in their own folder so the checksum comparison below covers
+# exactly what was uploaded (the work dir also holds rclone.conf and notes).
+mkdir -p "$WORK/up"
+head -c 5000000 /dev/urandom > "$WORK/up/probe.bin"
+printf 'Sky Linux feasibility ✓ æøå\n' > "$WORK/up/unicode æøå.txt"
 t0=$(date +%s.%N)
-rc copy "$WORK/probe.bin" "$REMOTE:$SCRATCH/" && rc copy "$WORK/unicode æøå.txt" "$REMOTE:$SCRATCH/"
+rc copy "$WORK/up/" "$REMOTE:$SCRATCH/"
 t1=$(date +%s.%N)
 rc copy "$REMOTE:$SCRATCH/" "$WORK/down/"
-if cmp -s "$WORK/probe.bin" "$WORK/down/probe.bin" && cmp -s "$WORK/unicode æøå.txt" "$WORK/down/unicode æøå.txt"; then
+if cmp -s "$WORK/up/probe.bin" "$WORK/down/probe.bin" && cmp -s "$WORK/up/unicode æøå.txt" "$WORK/down/unicode æøå.txt"; then
   pass "Upload + download byte-identical (5 MB in $(python3 -c "print(f'{$t1-$t0:.1f}')")s), unicode names preserved"
 else
   fail "round trip mismatch"
 fi
-rc check "$WORK" "$REMOTE:$SCRATCH" --one-way --exclude 'down/**' --exclude rclone.conf >/dev/null 2>&1 \
+rc check "$WORK/up" "$REMOTE:$SCRATCH" >/dev/null 2>&1 \
   && pass "Server-side MD5 checksums match local files" || fail "checksum check"
 rc purge "$REMOTE:$SCRATCH" && pass "Scratch folder removed (goes to Telia Sky trash)"
 
