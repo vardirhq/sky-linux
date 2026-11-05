@@ -9,7 +9,7 @@ const job = (lastError: UserError | null): BackupJob => ({
 });
 const pair = (state: SyncPair["state"], lastError: UserError | null = null): SyncPair => ({
   id: "s1", accountId: "a", name: "Telia Sky", localPath: "/home/k/Telia Sky", remotePath: "Sync", enabled: true,
-  maxDeletePercent: 50, pollMinutes: 5, state, lastSync: null, lastSummary: null, lastError, recoveryPath: "", createdAt: "",
+  maxDeletePercent: 50, pollMinutes: 5, state, lastSync: null, lastSummary: null, lastError, recoveryPath: "", createdAt: "", excluded: [],
 });
 
 describe("NotificationPolicy", () => {

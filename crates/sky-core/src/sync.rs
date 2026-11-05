@@ -209,14 +209,9 @@ impl SyncManager {
             .join(id.to_string())
             .join("recovery");
         std::fs::create_dir_all(&recovery)?;
-        // Fixed for the pair's lifetime: bisync requires a resync whenever
-        // the filters change.
-        let mut filters: String = DEFAULT_EXCLUDES
-            .iter()
-            .map(|r| format!("- {r}\n"))
-            .collect();
-        filters.push_str("- .sky-linux-partial*\n");
-        std::fs::write(&dirs.filters, filters)?;
+        // Changing the filters later (selective sync) makes bisync ask for
+        // a resync, which Sky Core runs as a non-destructive merge.
+        std::fs::write(&dirs.filters, filter_rules(&[]))?;
 
         let pair = SyncPair {
             id,
@@ -233,6 +228,7 @@ impl SyncManager {
             last_error: None,
             recovery_path: recovery,
             created_at: Utc::now(),
+            excluded: vec![],
         };
         self.db.upsert_sync_pair(&pair)?;
         self.bus.publish(Event::SyncPairChanged(pair.clone()));
@@ -268,6 +264,36 @@ impl SyncManager {
             self.schedule(p).await;
         }
         Ok(())
+    }
+
+    /// Selective sync: leave `folders` (relative to the pair) out of sync.
+    /// They stay in the cloud; copies already on this computer are left
+    /// alone. Then merges both sides, which never deletes, so folders taken
+    /// back into sync come down again.
+    pub async fn set_excluded(&self, id: Uuid, folders: Vec<String>) -> Result<SyncPair> {
+        let folders = normalize_excluded(folders)?;
+        let pair = {
+            let lock = self.locks.lock().await.entry(id).or_default().clone();
+            let _guard = lock.lock().await;
+            let mut pair = self.db.sync_pair(id)?;
+            if pair.excluded == folders {
+                return Ok(pair);
+            }
+            pair.excluded = folders;
+            std::fs::write(&self.dirs(id).filters, filter_rules(&pair.excluded))?;
+            self.db.upsert_sync_pair(&pair)?;
+            pair
+        };
+        self.bus.publish(Event::SyncPairChanged(pair.clone()));
+        if pair.enabled {
+            let me = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = me.run(id, RunMode::Merge).await {
+                    tracing::warn!(pair = %id, "merge after changing folders failed: {e}");
+                }
+            });
+        }
+        Ok(pair)
     }
 
     /// Files in a pair's recovery folder, newest first.
@@ -443,7 +469,10 @@ impl SyncManager {
         let mut outcome = self.bisync(&pair, &account.remote, mode).await;
         if mode == RunMode::Normal {
             if let Err(msg) = &outcome {
-                if needs_resync(msg) {
+                // Safety stops are never "fixed" by a merge: they wait for
+                // the user even if rclone also suggests --resync.
+                let safety_stop = is_too_many_deletes(msg) || is_access_failure(msg);
+                if !safety_stop && needs_resync(msg) {
                     // bisync lost its state (crash, changed filters): rebuild
                     // it with a merge, which never deletes.
                     tracing::warn!(pair = %id, "bisync state lost; merging both sides again");
@@ -460,7 +489,7 @@ impl SyncManager {
                 pair.last_summary = Some(summary);
                 pair.last_error = None;
             }
-            Err(msg) if msg.contains("too many deletes") => {
+            Err(msg) if is_too_many_deletes(&msg) => {
                 return self.needs_review(pair, ReviewReason::TooManyDeletes);
             }
             Err(msg) if is_access_failure(&msg) => {
@@ -573,16 +602,87 @@ impl SyncManager {
             tokio::time::sleep(Duration::from_millis(300)).await;
         };
         let _ = self.rclone.reset_stats(&group).await;
-        if !status.success {
-            return Err(status.error);
-        }
         let log = status
             .output
             .get("output")
             .and_then(|v| v.as_str())
             .unwrap_or_default();
+        if !status.success {
+            // The job error is just "bisync aborted"; the reason is in the
+            // log, so classify both.
+            return Err(failure_message(&status.error, log));
+        }
         Ok(parse_summary(log))
     }
+}
+
+/// The pair's rclone filter file: built-in excludes plus selective sync.
+fn filter_rules(excluded: &[String]) -> String {
+    let mut f: String = DEFAULT_EXCLUDES
+        .iter()
+        .map(|r| format!("- {r}\n"))
+        .collect();
+    f.push_str("- .sky-linux-partial*\n");
+    for folder in excluded {
+        // Anchored at the pair's root, the folder and everything inside it.
+        f.push_str(&format!("- /{}/**\n", escape_glob(folder)));
+    }
+    f
+}
+
+/// Escape rclone filter glob characters so folder names match literally.
+fn escape_glob(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        if matches!(c, '*' | '?' | '[' | ']' | '{' | '}' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Clean, check and de-duplicate selective-sync folders.
+fn normalize_excluded(folders: Vec<String>) -> Result<Vec<String>> {
+    let mut out = Vec::new();
+    for f in folders {
+        let f = f.trim().trim_matches('/').to_string();
+        if f.is_empty()
+            || f.split('/').any(|p| p.is_empty() || p == "." || p == "..")
+            || f.contains(['\n', '\r'])
+        {
+            return Err(
+                CoreError::rule("invalid_path", format!("'{f}' is not a valid path."))
+                    .with("path", f),
+            );
+        }
+        out.push(f);
+    }
+    out.sort();
+    out.dedup();
+    // A folder inside an excluded folder is already excluded.
+    let all = out.clone();
+    out.retain(|f| !all.iter().any(|o| f.starts_with(&format!("{o}/"))));
+    Ok(out)
+}
+
+/// rclone's job error plus the error lines of its log, without colours.
+fn failure_message(error: &str, log: &str) -> String {
+    let lines: Vec<String> = strip_ansi(log)
+        .lines()
+        .filter(|l| l.contains("ERROR") || l.to_lowercase().contains("resync"))
+        .map(|l| l.trim().to_string())
+        .collect();
+    let tail = lines[lines.len().saturating_sub(10)..].join("\n");
+    if tail.is_empty() {
+        error.to_string()
+    } else {
+        format!("{error}\n{tail}")
+    }
+}
+
+fn is_too_many_deletes(msg: &str) -> bool {
+    msg.to_lowercase().contains("too many deletes")
 }
 
 fn needs_resync(msg: &str) -> bool {
@@ -643,6 +743,38 @@ pub fn parse_summary(log: &str) -> SyncSummary {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn failures_are_classified_from_the_log() {
+        let log = "2026/11/05 ERROR : \u{1b}[31mBisync critical error: filters file has changed (must run --resync): /x/filters.txt\n\
+                   2026/11/05 ERROR : \u{1b}[31mBisync aborted. Must run --resync to recover.\u{1b}[0m\n";
+        let msg = failure_message("bisync aborted", log);
+        assert!(msg.starts_with("bisync aborted\n"));
+        assert!(needs_resync(&msg), "{msg}");
+        assert!(!msg.contains('\u{1b}'));
+        assert_eq!(failure_message("bisync aborted", ""), "bisync aborted");
+    }
+
+    #[test]
+    fn selective_sync_rules() {
+        let rules = filter_rules(&["Photos/2019".into(), "Film [HD]".into()]);
+        assert!(rules.contains("- /Photos/2019/**\n"));
+        assert!(rules.contains("- /Film \\[HD\\]/**\n"), "{rules}");
+        assert!(rules.contains("- .sky-linux-partial*\n"));
+        assert_eq!(
+            normalize_excluded(vec![
+                "/Photos/".into(),
+                "Photos/2019".into(),
+                "Docs".into(),
+                "Docs".into()
+            ])
+            .unwrap(),
+            ["Docs", "Photos"]
+        );
+        for bad in ["", "..", "a/../b", "a//b", "a\nb"] {
+            assert!(normalize_excluded(vec![bad.into()]).is_err(), "{bad:?}");
+        }
+    }
+
     use super::*;
 
     #[test]

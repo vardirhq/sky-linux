@@ -466,3 +466,76 @@ async fn files_restored_from_the_recovery_folder_return_to_the_cloud() {
     assert!(bad.is_err());
     env.core.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn excluded_folders_stay_in_the_cloud_and_come_back_when_included() {
+    let env = need_rclone!();
+    write(&env.local.join("Docs/a.txt"), "a");
+    write(&env.remote().join("Docs/b.txt"), "b");
+    write(&env.remote().join("Photos/old.jpg"), "old");
+    let pair = env.pair(false).await;
+    assert!(env.local.join("Photos/old.jpg").is_file());
+
+    // Leave Photos out (the scheduler is off, so the next run is a normal
+    // one: bisync notices the changed filters and Sky Core merges instead).
+    let p = env
+        .core
+        .sync
+        .set_excluded(pair.id, vec!["Photos/".into()])
+        .await
+        .unwrap();
+    assert_eq!(p.excluded, ["Photos"]);
+    write(&env.remote().join("Photos/new.jpg"), "new");
+    write(&env.local.join("Docs/c.txt"), "c");
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert!(
+        !env.local.join("Photos/new.jpg").exists(),
+        "excluded: not downloaded"
+    );
+    assert_eq!(
+        read(&env.remote().join("Docs/c.txt")),
+        "c",
+        "the rest still syncs"
+    );
+
+    // Freeing space here never deletes the excluded folder in the cloud.
+    std::fs::remove_dir_all(env.local.join("Photos")).unwrap();
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert_eq!(read(&env.remote().join("Photos/old.jpg")), "old");
+    assert_eq!(read(&env.remote().join("Photos/new.jpg")), "new");
+
+    // Taking it back into sync downloads it again.
+    env.core.sync.set_excluded(pair.id, vec![]).await.unwrap();
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert_eq!(read(&env.local.join("Photos/old.jpg")), "old");
+    assert_eq!(read(&env.local.join("Photos/new.jpg")), "new");
+    // And the setting survives a restart of the database row.
+    assert!(env.core.db.sync_pair(pair.id).unwrap().excluded.is_empty());
+    env.core.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn lost_bisync_state_is_rebuilt_with_a_merge() {
+    let env = need_rclone!();
+    write(&env.local.join("a.txt"), "a");
+    write(&env.remote().join("b.txt"), "b");
+    let pair = env.pair(false).await;
+    // bisync's listings vanish (crash, cleaned cache).
+    let work = env
+        .core
+        .paths
+        .data_dir
+        .join("sync")
+        .join(pair.id.to_string())
+        .join("work");
+    std::fs::remove_dir_all(&work).unwrap();
+    write(&env.local.join("c.txt"), "c");
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert_eq!(read(&env.remote().join("c.txt")), "c");
+    assert_eq!(names(&env.local), ["a.txt", "b.txt", "c.txt"]);
+    env.core.shutdown().await;
+}

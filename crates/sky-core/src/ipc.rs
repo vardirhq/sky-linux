@@ -131,6 +131,8 @@ pub enum Request {
         id: Uuid,
         action: crate::sync::ReviewAction,
     },
+    #[serde(rename = "sync.setExcluded")]
+    SetSyncExcluded { id: Uuid, folders: Vec<String> },
     #[serde(rename = "sync.recovery.list")]
     RecoveryFiles { id: Uuid },
     #[serde(rename = "sync.recovery.restore")]
@@ -249,6 +251,7 @@ pub async fn dispatch(core: &SkyCore, req: Request) -> Result<Value> {
         Request::DeleteSync { id } => v(core.sync.delete(id).await?)?,
         Request::RunSync { id } => v(core.sync.run_now(id).await?)?,
         Request::ResolveSync { id, action } => v(core.sync.resolve(id, action).await?)?,
+        Request::SetSyncExcluded { id, folders } => v(core.sync.set_excluded(id, folders).await?)?,
         Request::RecoveryFiles { id } => v(core.sync.recovery_files(id)?)?,
         Request::RestoreFiles { id, paths } => v(core.sync.restore(id, paths).await?)?,
         Request::History { limit } => v(core.history(limit.min(1000))?)?,

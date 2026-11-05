@@ -233,6 +233,17 @@ export const nb: Dict = {
     pause: "Sett {name} på pause",
     remove: "Slutt å synkronisere",
     recovery: "Gjenopprettingsmappe",
+    folders: {
+      button: "Velg mapper",
+      title: "Mapper som synkroniseres i «{name}»",
+      hint: "Fjern haken for mapper du ikke trenger på denne datamaskinen. De blir værende i skyen og på de andre enhetene dine.",
+      none: "Denne skymappen har ingen undermapper ennå. Filer som ligger rett i den, synkroniseres alltid.",
+      cloudOnly: "Bare i skyen",
+      note: "Filer som allerede ligger på denne datamaskinen i en mappe uten hake, blir liggende. Slett dem selv hvis du vil frigjøre plass. Ingenting slettes i skyen. Filer som ligger rett i den synkroniserte mappen, synkroniseres alltid.",
+      save: "Lagre",
+      saved: "Mappevalget er lagret. Synkroniserer …",
+      excludedN: "1 mappe bare i skyen|{count} mapper bare i skyen",
+    },
     recover: {
       title: "Gjenopprett filer fra «{name}»",
       hint: "Filer som synkroniseringen fjernet eller erstattet på denne datamaskinen, for eksempel fordi de ble slettet på en annen enhet. Gjenopprettede filer legges tilbake der de var, og synkroniseres til skyen igjen. Ingenting blir overskrevet.",
