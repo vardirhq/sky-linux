@@ -2,7 +2,9 @@ import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { t } from "@/i18n";
-import { api, isTauri } from "@/lib/api";
+import { api, isTauri, onEvent } from "@/lib/api";
+import { reconcileAutostart } from "@/lib/autostart";
+import { NotificationPolicy, showNotification } from "@/lib/notify";
 import { keys, useAccounts, useDaemonEvents, useSetting } from "@/lib/hooks";
 import { useUi } from "@/store/ui";
 import { Banners, Sidebar, StatusBar, Toasts, TopBar } from "@/components/layout";
@@ -35,6 +37,35 @@ function useLanguage() {
     if (isTauri())
       import("@tauri-apps/api/core").then(({ invoke }) => invoke("set_tray_language", { locale }).catch(() => {}));
   }, [locale]);
+}
+
+/** Desktop notifications while the window is in the background. */
+function useNotifications() {
+  const enabled = useSetting<boolean>("notifications");
+  const on = enabled.isSuccess && enabled.data !== false;
+  useEffect(() => {
+    if (!on) return;
+    const policy = new NotificationPolicy();
+    let un: (() => void) | undefined;
+    let alive = true;
+    onEvent((e) => {
+      const note = policy.decide(e);
+      // In the foreground, banners and toasts already say it.
+      if (note && !document.hasFocus()) showNotification(note).catch(() => {});
+    }).then((u) => (alive ? (un = u) : u()));
+    return () => {
+      alive = false;
+      un?.();
+    };
+  }, [on]);
+}
+
+/** Restore the autostart entry if it went missing (or remove a stray one). */
+function useAutostart() {
+  const saved = useSetting<boolean>("startOnLogin");
+  useEffect(() => {
+    if (saved.isSuccess) reconcileAutostart(saved.data).catch(() => {});
+  }, [saved.isSuccess, saved.data]);
 }
 
 /** OS file drops onto the window upload into the current folder. */
@@ -79,6 +110,8 @@ export default function App() {
   useTheme();
   useNativeDrop();
   useLanguage();
+  useNotifications();
+  useAutostart();
   const t = useT();
   const view = useUi((s) => s.view);
   const accounts = useAccounts();

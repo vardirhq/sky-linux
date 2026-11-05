@@ -171,6 +171,13 @@ impl RcloneClient {
             .map(drop)
     }
 
+    /// Limit rclone's total bandwidth. `rate` is rclone syntax ("5M") or "off".
+    pub async fn set_bwlimit(&self, rate: &str) -> Result<()> {
+        self.call("core/bwlimit", json!({ "rate": rate }))
+            .await
+            .map(drop)
+    }
+
     pub async fn quit(&self) -> Result<()> {
         self.call("core/quit", json!({})).await.map(drop)
     }

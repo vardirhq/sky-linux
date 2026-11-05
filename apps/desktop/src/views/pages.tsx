@@ -11,7 +11,10 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { api, pickFolders } from "@/lib/api";
+import { api, copyText, pickFolders } from "@/lib/api";
+import { setAutostart } from "@/lib/autostart";
+import { useQuery } from "@tanstack/react-query";
+import { useUi } from "@/store/ui";
 import { keys, useAccounts, useAction, useBackups, useHistory, useSetting, useStatus, useTransfers } from "@/lib/hooks";
 import type { Schedule, Transfer } from "@/lib/types";
 import { cn, formatBytes, formatDate, formatEta, formatSpeed, percent, timeAgo } from "@/lib/utils";
@@ -281,7 +284,12 @@ export function SettingsView() {
   const t = useT();
   const provider = useProvider();
   const { locale, setLocale } = useLocale();
+  const bandwidth = useSetting<number>("bandwidthLimit").data ?? 0;
   const set = useAction(({ key, value }: { key: string; value: unknown }) => api.setSetting(key, value), [["setting"]]);
+  const setStartOnLogin = useAction(async (on: boolean) => {
+    await setAutostart(on);
+    await api.setSetting("startOnLogin", on);
+  }, [["setting"]]);
   const disconnect = useAction(api.disconnect, [keys.accounts, keys.status], t("settings.toast.signedOut"));
   const reconnect = useAction(api.connect, [keys.accounts], t("settings.toast.signedIn"));
   const [confirm, setConfirm] = useState(false);
@@ -334,9 +342,23 @@ export function SettingsView() {
               ))}
             </select>)}
           {row(t("settings.startOnLogin"), t("settings.startOnLoginHint"),
-            <Switch label={t("settings.startOnLogin")} checked={startOnLogin} onChange={(v) => set.mutate({ key: "startOnLogin", value: v })} />)}
+            <Switch label={t("settings.startOnLogin")} checked={startOnLogin} onChange={(v) => setStartOnLogin.mutate(v)} />)}
           {row(t("settings.notifications"), t("settings.notificationsHint"),
             <Switch label={t("settings.notifications")} checked={notifications} onChange={(v) => set.mutate({ key: "notifications", value: v })} />)}
+          {row(t("settings.bandwidth"), t("settings.bandwidthHint"),
+            <select
+              aria-label={t("settings.bandwidth")}
+              value={bandwidth}
+              onChange={(e) => {
+                const v = Number(e.target.value);
+                set.mutate({ key: "bandwidthLimit", value: v > 0 ? v : null });
+              }}
+              className="h-9 rounded-lg border border-border bg-surface px-2 text-sm"
+            >
+              {BANDWIDTH_CHOICES.map((mb) => (
+                <option key={mb} value={mb}>{mb === 0 ? t("settings.bandwidthNone") : t("settings.bandwidthMb", { mb })}</option>
+              ))}
+            </select>)}
           {row(t("settings.appearance"), t("settings.appearanceHint"),
             <select
               aria-label={t("settings.appearance")}
@@ -350,6 +372,7 @@ export function SettingsView() {
             </select>)}
         </CardContent>
       </Card>
+      <DiagnosticsCard />
       <Card>
         <CardHeader><CardTitle>{t("settings.about")}</CardTitle></CardHeader>
         <CardContent className="space-y-1 text-sm text-fg-muted">
@@ -377,3 +400,51 @@ export function SettingsView() {
 }
 
 
+
+/** MB/s; 0 = no limit. */
+const BANDWIDTH_CHOICES = [0, 1, 2, 5, 10, 20, 50];
+
+function DiagnosticsCard() {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const toast = useUi((s) => s.toast);
+  const diag = useQuery({ queryKey: ["diagnostics"], queryFn: api.diagnostics, enabled: open });
+  const copy = async () => {
+    try {
+      const d = diag.data ?? (await api.diagnostics());
+      await copyText(d.report);
+      toast({ kind: "success", title: t("settings.diagnostics.copied") });
+    } catch {
+      toast({ kind: "error", title: t("settings.diagnostics.copyFailed") });
+    }
+  };
+  return (
+    <Card id="diagnostics">
+      <CardHeader><CardTitle>{t("settings.diagnostics.title")}</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-fg-muted">{t("settings.diagnostics.hint")}</p>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={copy}>{t("settings.diagnostics.copy")}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+            {open ? t("settings.diagnostics.hide") : t("settings.diagnostics.show")}
+          </Button>
+        </div>
+        {open && (
+          <>
+            {diag.data && (
+              <p className="text-sm">
+                {diag.data.rcloneRunning ? t("settings.diagnostics.engineOk") : t("settings.diagnostics.engineDown")}
+                {" • "}
+                {t("settings.diagnostics.problems", { count: diag.data.recentProblems })}
+              </p>
+            )}
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border bg-bg p-3 font-mono text-xs">
+              {diag.isLoading ? "…" : diag.data?.report}
+            </pre>
+            <Button size="sm" variant="ghost" onClick={() => diag.refetch()}>{t("settings.diagnostics.refresh")}</Button>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

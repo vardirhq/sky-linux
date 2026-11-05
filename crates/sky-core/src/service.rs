@@ -62,6 +62,7 @@ impl SkyCore {
             extra_args: vec![],
         }));
         rclone.start().await?;
+        apply_bandwidth(&db, &rclone.client()).await;
         let version = rclone.client().version().await?;
         if !crate::rclone::version_supported(&version.version) {
             tracing::warn!(
@@ -102,9 +103,14 @@ impl SkyCore {
         let sup = self.rclone.clone();
         let mut running = sup.running();
         let bus = self.bus.clone();
+        let (db, client) = (self.db.clone(), self.client());
         tokio::spawn(async move {
             while running.changed().await.is_ok() {
                 let r = *running.borrow();
+                if r {
+                    // A restarted rclone has forgotten the limit.
+                    apply_bandwidth(&db, &client).await;
+                }
                 bus.publish(Event::RcloneStatus { running: r });
             }
         });
@@ -407,8 +413,69 @@ impl SkyCore {
         self.db.history(limit)
     }
 
+    /// Save the bandwidth limit (MB/s, `None` or 0 for no limit) and apply it.
+    pub async fn set_bandwidth_limit(&self, mb_per_s: Option<u32>) -> Result<()> {
+        if mb_per_s.is_some_and(|v| v > MAX_BANDWIDTH_MB) {
+            return Err(CoreError::Invalid(format!(
+                "bandwidth limit must be at most {MAX_BANDWIDTH_MB} MB/s"
+            )));
+        }
+        self.db
+            .set_setting(BANDWIDTH_SETTING, &mb_per_s.filter(|v| *v > 0))?;
+        self.client().set_bwlimit(&bwlimit_rate(mb_per_s)).await
+    }
+
+    /// A shareable report for bug reports (see [`crate::diagnostics`]).
+    pub async fn diagnostics(&self) -> Result<crate::diagnostics::Diagnostics> {
+        let rclone_version = self.client().version().await.ok().map(|v| v.version);
+        let home = dirs::home_dir();
+        Ok(crate::diagnostics::build(
+            &crate::diagnostics::DiagnosticsInput {
+                version: env!("CARGO_PKG_VERSION"),
+                rclone_version: rclone_version.as_deref(),
+                os: crate::diagnostics::os_name(),
+                bandwidth_limit: bandwidth_setting(&self.db),
+                accounts: &self.accounts.list()?,
+                backups: &self.backups.list()?,
+                sync_pairs: &self.sync.list()?,
+                history: &self.db.history(500)?,
+                rclone_log: &self.rclone.recent_logs(),
+                home: home.as_deref(),
+            },
+        ))
+    }
+
     pub async fn shutdown(&self) {
         self.rclone.stop().await;
+    }
+}
+
+/// Settings key for the bandwidth limit in MB/s (`null` = no limit).
+pub const BANDWIDTH_SETTING: &str = "bandwidthLimit";
+const MAX_BANDWIDTH_MB: u32 = 10_000;
+
+fn bandwidth_setting(db: &Database) -> Option<u32> {
+    db.get_setting::<Option<u32>>(BANDWIDTH_SETTING)
+        .ok()
+        .flatten()
+        .flatten()
+        .filter(|v| *v > 0)
+}
+
+/// rclone `--bwlimit` syntax; rclone's "M" is MiB/s.
+fn bwlimit_rate(mb_per_s: Option<u32>) -> String {
+    match mb_per_s {
+        Some(v) if v > 0 => format!("{v}M"),
+        _ => "off".into(),
+    }
+}
+
+/// Apply the saved limit to a running rclone. Failures are logged: the next
+/// rclone start applies it again.
+async fn apply_bandwidth(db: &Database, client: &RcloneClient) {
+    let rate = bwlimit_rate(bandwidth_setting(db));
+    if let Err(e) = client.set_bwlimit(&rate).await {
+        tracing::warn!("could not apply the bandwidth limit {rate}: {e}");
     }
 }
 
@@ -439,5 +506,12 @@ mod tests {
         assert!(clean_remote("a//b").is_err());
         assert_eq!(parent_of("a/b/c"), "a/b");
         assert_eq!(parent_of("a"), "");
+    }
+
+    #[test]
+    fn bandwidth_rates() {
+        assert_eq!(bwlimit_rate(None), "off");
+        assert_eq!(bwlimit_rate(Some(0)), "off");
+        assert_eq!(bwlimit_rate(Some(5)), "5M");
     }
 }

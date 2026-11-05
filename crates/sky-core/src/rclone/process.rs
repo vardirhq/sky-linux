@@ -1,6 +1,7 @@
 //! Supervision of the private `rclone rcd` process: start, health-check,
 //! restart with backoff, and log capture (used to surface OAuth URLs).
 
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -66,12 +67,16 @@ pub struct RcloneLogLine {
     pub line: String,
 }
 
+/// How many recent rclone log lines are kept for the diagnostics report.
+const RECENT_LOG_LINES: usize = 200;
+
 /// Owns the rclone child process and restarts it if it dies.
 pub struct RcloneSupervisor {
     cfg: SupervisorConfig,
     creds: RcCredentials,
     child: Arc<Mutex<Option<Child>>>,
     logs: broadcast::Sender<RcloneLogLine>,
+    recent: Arc<std::sync::Mutex<VecDeque<String>>>,
     running: watch::Sender<bool>,
     shutdown: watch::Sender<bool>,
 }
@@ -84,6 +89,9 @@ impl RcloneSupervisor {
             creds: RcCredentials::random(),
             child: Arc::new(Mutex::new(None)),
             logs,
+            recent: Arc::new(std::sync::Mutex::new(VecDeque::with_capacity(
+                RECENT_LOG_LINES,
+            ))),
             running: watch::channel(false).0,
             shutdown: watch::channel(false).0,
         }
@@ -95,6 +103,14 @@ impl RcloneSupervisor {
 
     pub fn logs(&self) -> broadcast::Receiver<RcloneLogLine> {
         self.logs.subscribe()
+    }
+
+    /// The most recent rclone log lines, oldest first.
+    pub fn recent_logs(&self) -> Vec<String> {
+        self.recent
+            .lock()
+            .map(|r| r.iter().cloned().collect())
+            .unwrap_or_default()
     }
 
     pub fn running(&self) -> watch::Receiver<bool> {
@@ -193,10 +209,17 @@ impl RcloneSupervisor {
         .flatten()
         {
             let tx = self.logs.clone();
+            let recent = self.recent.clone();
             tokio::spawn(async move {
                 let mut lines = BufReader::new(stream).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     tracing::debug!(target: "rclone", "{line}");
+                    if let Ok(mut r) = recent.lock() {
+                        if r.len() == RECENT_LOG_LINES {
+                            r.pop_front();
+                        }
+                        r.push_back(line.clone());
+                    }
                     let _ = tx.send(RcloneLogLine { line });
                 }
             });

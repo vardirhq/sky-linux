@@ -136,6 +136,8 @@ pub enum Request {
         #[serde(default = "default_limit")]
         limit: u32,
     },
+    #[serde(rename = "daemon.diagnostics")]
+    Diagnostics,
     #[serde(rename = "settings.get")]
     GetSetting { key: String },
     #[serde(rename = "settings.set")]
@@ -244,13 +246,25 @@ pub async fn dispatch(core: &SkyCore, req: Request) -> Result<Value> {
         Request::RunSync { id } => v(core.sync.run_now(id).await?)?,
         Request::ResolveSync { id, action } => v(core.sync.resolve(id, action).await?)?,
         Request::History { limit } => v(core.history(limit.min(1000))?)?,
+        Request::Diagnostics => v(core.diagnostics().await?)?,
         Request::GetSetting { key } => {
             check_setting(&key)?;
             core.db.get_setting::<Value>(&key)?.unwrap_or(Value::Null)
         }
         Request::SetSetting { key, value } => {
             check_setting(&key)?;
-            core.db.set_setting(&key, &value)?;
+            if key == crate::service::BANDWIDTH_SETTING {
+                let limit =
+                    match &value {
+                        Value::Null => None,
+                        v => Some(v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(
+                            || CoreError::Invalid("bandwidth limit must be a whole number".into()),
+                        )?),
+                    };
+                core.set_bandwidth_limit(limit).await?;
+            } else {
+                core.db.set_setting(&key, &value)?;
+            }
             Value::Null
         }
     })
