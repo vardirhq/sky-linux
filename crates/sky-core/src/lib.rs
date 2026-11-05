@@ -14,6 +14,7 @@ pub mod accounts;
 pub mod areas;
 pub mod backup;
 pub mod db;
+pub mod diagnostics;
 pub mod error;
 pub mod events;
 pub mod ipc;

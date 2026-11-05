@@ -428,3 +428,67 @@ async fn rclone_config_is_encrypted_at_rest() {
     );
     core.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn bandwidth_limit_reaches_rclone_and_survives_a_restart() {
+    let Some(env) = env() else { return };
+    let core = start(&env).await;
+    let rate = |c: Arc<SkyCore>| async move {
+        c.client().call("core/bwlimit", json!({})).await.unwrap()["rate"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    };
+    assert_eq!(rate(core.clone()).await, "off");
+
+    ipc::dispatch(
+        &core,
+        serde_json::from_value(
+            json!({ "method": "settings.set", "params": { "key": "bandwidthLimit", "value": 5 } }),
+        )
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(rate(core.clone()).await, "5Mi");
+
+    let bad: Request = serde_json::from_value(
+        json!({ "method": "settings.set", "params": { "key": "bandwidthLimit", "value": "fast" } }),
+    )
+    .unwrap();
+    assert!(ipc::dispatch(&core, bad).await.is_err());
+
+    // A fresh start (as after a reboot) applies the saved limit.
+    core.shutdown().await;
+    drop(core);
+    let core = start(&env).await;
+    assert_eq!(rate(core.clone()).await, "5Mi");
+
+    ipc::dispatch(
+        &core,
+        serde_json::from_value(json!({ "method": "settings.set", "params": { "key": "bandwidthLimit", "value": null } }))
+            .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(rate(core.clone()).await, "off");
+    core.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_report_over_ipc() {
+    let Some(env) = env() else { return };
+    let core = start(&env).await;
+    connect(&core, &env).await;
+    let v = ipc::dispatch(
+        &core,
+        serde_json::from_value(json!({ "method": "daemon.diagnostics" })).unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(v["rcloneRunning"], true);
+    let report = v["report"].as_str().unwrap();
+    assert!(report.contains("## Accounts (1)"), "{report}");
+    assert!(report.contains("rclone: v"), "{report}");
+    core.shutdown().await;
+}

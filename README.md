@@ -21,6 +21,8 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 | Downloads never overwrite local files (`name (1).ext`) | ✅ |
 | Upload-only backups (on change / interval / manual); never delete remote files | ✅ |
 | Restart recovery for interrupted transfers | ✅ |
+| Start on login (hidden in the tray), desktop notifications for failed backups, paused syncs and expired sign-ins, bandwidth limit | ✅ Autostart entry verified in the installed .deb; notifications not yet seen on a real desktop |
+| Diagnostics report to copy into bug reports (no tokens, names, e-mail addresses or home path) | ✅ |
 | Background daemon that keeps running after the window closes | ✅ |
 | Encrypted rclone config, with the password kept in the Secret Service keyring | ✅ |
 | Norwegian Bokmål (default) and English UI, including translated Sky Core errors | ✅ |

@@ -262,6 +262,26 @@ export class DemoTransport implements Transport {
           backupJobs: backups.length,
           syncPairs: syncPairs.length,
         };
+      case "daemon.diagnostics":
+        return {
+          generatedAt: now(),
+          rcloneRunning: true,
+          recentProblems: 0,
+          report: [
+            "# Sky Linux diagnostics",
+            `Generated: ${now()}`,
+            "Sky Linux: 0.1.0-demo",
+            "rclone: v1.75.2",
+            "System: demo",
+            `Bandwidth limit: ${this.settings.bandwidthLimit ? `${this.settings.bandwidthLimit} MB/s` : "none"}`,
+            "",
+            `## Accounts (${this.connected ? 1 : 0})`,
+            `## Backups (${backups.length})`,
+            ...backups.map((b) => `- ${b.localPath.replace("/home/ola", "~")} → ${b.remotePath}`),
+            "",
+            "## Recent problems (0)",
+          ].join("\n"),
+        };
       case "accounts.providers":
         return [
           { id: "telia_sky_no", name: "Telia Sky", supported: true },

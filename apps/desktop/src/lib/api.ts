@@ -8,6 +8,7 @@ import type {
   BackupJob,
   CloudEntry,
   DaemonStatus,
+  Diagnostics,
   HistoryEntry,
   NewBackupJob,
   NewSyncPair,
@@ -93,6 +94,7 @@ async function call<T>(method: string, params?: unknown): Promise<T> {
 
 export const api = {
   status: () => call<DaemonStatus>("daemon.status"),
+  diagnostics: () => call<Diagnostics>("daemon.diagnostics"),
   providers: () => call<ProviderInfo[]>("accounts.providers"),
   accounts: () => call<Account[]>("accounts.list"),
   connect: (provider: Provider) => call<Account>("accounts.connect", { provider }),
@@ -180,6 +182,26 @@ export async function openFolder(path: string) {
   }
   const { openPath } = await import("@tauri-apps/plugin-opener");
   await openPath(path);
+}
+
+/** Copy text to the clipboard. Falls back to execCommand where the
+ * asynchronous clipboard API isn't available (some WebKitGTK versions). */
+export async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return;
+  } catch {
+    /* fall through */
+  }
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  const ok = document.execCommand("copy");
+  area.remove();
+  if (!ok) throw new Error("clipboard unavailable");
 }
 
 export async function defaultDownloadDir(): Promise<string> {

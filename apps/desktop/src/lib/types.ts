@@ -166,6 +166,14 @@ export interface SyncPair {
   createdAt: string;
 }
 
+export interface Diagnostics {
+  generatedAt: string;
+  rcloneRunning: boolean;
+  recentProblems: number;
+  /** Plain-text report without tokens, names or the home folder path. */
+  report: string;
+}
+
 export interface NewSyncPair {
   accountId: string;
   name?: string | null;
