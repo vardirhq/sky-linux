@@ -43,6 +43,21 @@ A binary needs the glibc it was built against or newer. Builds on Ubuntu 24.04 n
 
 arm64 builds use GitHub's ARM runners. Set the repository variable `ENABLE_ARM64=true` to include them.
 
+## Editions
+
+One codebase can be built as different editions. An edition changes only presentation: the name, colours and wording. Sky Core, its safety rules and its tests are the same in every edition.
+
+| Edition | Build | Package | Look |
+| --- | --- | --- | --- |
+| Sky Linux (default) | `npx tauri build` | `sky-linux` | Neutral blue |
+| Telia Sky | `npm run tauri:build:telia` (in `apps/desktop`) | `telia-sky` | Purple, in Telia's spirit |
+
+- Preview an edition in the browser with the demo backend: `npm run dev:telia`.
+- The edition is set by `VITE_SKY_EDITION` (`apps/desktop/src/edition.ts`) together with a Tauri config overlay (`src-tauri/editions/<edition>.conf.json`) for the product and window name.
+- Colours come from CSS tokens under `:root[data-edition="…"]` in `styles.css`.
+- Both editions install `/usr/bin/sky-linux` and use the same data folders and background service, so their packages conflict: only one can be installed at a time.
+- **Brand assets.** The Telia Sky edition uses a generic cloud icon and the app's own typeface. Telia's logo, typeface and name in a published build need Telia's permission. Until then this edition is for demonstrations, not for public release.
+
 ## Background service per format
 
 - **deb/rpm/AUR:** `systemctl --user enable --now sky-daemon.service`. The app also starts the unit, or the binary directly, if it isn't running.

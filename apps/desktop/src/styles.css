@@ -25,6 +25,9 @@
   --color-danger: #d1383d;
   --color-danger-soft: #fdecec;
 
+  --color-avatar-from: #38bdf8;
+  --color-avatar-to: #2563eb;
+
   --radius-card: 14px;
   --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.06);
 }
@@ -60,6 +63,42 @@
       --color-success-soft: #12301f;
       --color-warning-soft: #33280f;
       --color-danger-soft: #3a1618;
+    }
+  }
+
+  /* Telia Sky edition (VITE_SKY_EDITION=telia): a purple look in Telia's
+     spirit. Selectors are more specific than the base themes above, so
+     they win in both light and dark mode. */
+  :root[data-edition="telia"] {
+      --color-bg: #f7f5fa;
+      --color-surface-muted: #f8f5fc;
+      --color-border: #e8e2ef;
+      --color-accent: #990ae3;
+      --color-accent-hover: #8008c0;
+      --color-accent-soft: #f4e0ff;
+      --color-avatar-from: #c46eff;
+      --color-avatar-to: #990ae3;
+  }
+  :root[data-edition="telia"][data-theme="dark"] {
+      --color-bg: #120d17;
+      --color-surface: #1b1422;
+      --color-surface-muted: #21182a;
+      --color-border: #33263f;
+      --color-accent: #c46eff;
+      --color-accent-hover: #d391ff;
+      --color-accent-soft: #2e1340;
+      --color-accent-fg: #1f0530;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root[data-edition="telia"]:not([data-theme="light"]) {
+      --color-bg: #120d17;
+      --color-surface: #1b1422;
+      --color-surface-muted: #21182a;
+      --color-border: #33263f;
+      --color-accent: #c46eff;
+      --color-accent-hover: #d391ff;
+      --color-accent-soft: #2e1340;
+      --color-accent-fg: #1f0530;
     }
   }
 

@@ -51,7 +51,10 @@
           "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
           "/usr/lib/sky-linux/rclone": "binaries/rclone"
         },
-        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs"
+        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs",
+        "conflicts": [
+          "telia-sky"
+        ]
       },
       "rpm": {
         "depends": [
@@ -62,7 +65,10 @@
           "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
           "/usr/lib/sky-linux/rclone": "binaries/rclone"
         },
-        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs"
+        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs",
+        "conflicts": [
+          "telia-sky"
+        ]
       },
       "appimage": {
         "files": {

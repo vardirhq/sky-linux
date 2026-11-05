@@ -6,6 +6,7 @@ import { create } from "zustand";
 import { en, type Dict } from "./en";
 import { nb } from "./nb";
 import type { UserError } from "@/lib/types";
+import { EDITION } from "@/edition";
 
 export type Locale = "nb" | "en";
 export const DEFAULT_LOCALE: Locale = "nb";
@@ -63,7 +64,7 @@ export function format(template: string, vars?: Vars, locale: Locale = DEFAULT_L
     s = Number(vars?.count) === 1 ? one : other;
   }
   return s.replace(/\{(\w+)\}/g, (_, k) => {
-    const v = vars?.[k];
+    const v = k === "app" && vars?.app == null ? EDITION.appName : vars?.[k];
     if (v == null) return `{${k}}`;
     return typeof v === "number" ? v.toLocaleString(INTL_LOCALE[locale]) : v;
   });

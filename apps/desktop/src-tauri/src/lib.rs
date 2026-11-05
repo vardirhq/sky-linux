@@ -27,20 +27,35 @@ struct TrayItems {
     quit: MenuItem<tauri::Wry>,
 }
 
-fn tray_labels(locale: &str) -> (&'static str, &'static str) {
+/// The product name of this build's edition ("Sky Linux", "Telia Sky").
+fn app_name(app: &AppHandle) -> String {
+    app.config()
+        .product_name
+        .clone()
+        .unwrap_or_else(|| "Sky Linux".into())
+}
+
+fn tray_labels(locale: &str, app: &str) -> (String, String) {
     match locale {
-        "en" => ("Open Sky Linux", "Quit window (backups keep running)"),
+        "en" => (
+            format!("Open {app}"),
+            "Quit window (backups keep running)".into(),
+        ),
         // Norwegian Bokmål is the default language.
         _ => (
-            "Åpne Sky Linux",
-            "Avslutt vinduet (sikkerhetskopiene fortsetter)",
+            format!("Åpne {app}"),
+            "Avslutt vinduet (sikkerhetskopiene fortsetter)".into(),
         ),
     }
 }
 
 #[tauri::command]
-fn set_tray_language(items: State<'_, TrayItems>, locale: String) -> Result<(), String> {
-    let (open, quit) = tray_labels(&locale);
+fn set_tray_language(
+    app: AppHandle,
+    items: State<'_, TrayItems>,
+    locale: String,
+) -> Result<(), String> {
+    let (open, quit) = tray_labels(&locale, &app_name(&app));
     items.open.set_text(open).map_err(|e| e.to_string())?;
     items.quit.set_text(quit).map_err(|e| e.to_string())?;
     Ok(())
@@ -164,13 +179,14 @@ pub fn run() {
         .manage(Daemon::default())
         .invoke_handler(tauri::generate_handler![daemon_request, set_tray_language])
         .setup(|app| {
-            let (open_label, quit_label) = tray_labels("nb");
+            let name = app_name(app.handle());
+            let (open_label, quit_label) = tray_labels("nb", &name);
             let open = MenuItem::with_id(app, "open", open_label, true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", quit_label, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
             TrayIconBuilder::with_id("sky")
                 .icon(app.default_window_icon().cloned().expect("icon configured"))
-                .tooltip("Sky Linux")
+                .tooltip(&name)
                 .menu(&menu)
                 .on_menu_event(|app, e| match e.id.as_ref() {
                     "open" => show_main(app),
