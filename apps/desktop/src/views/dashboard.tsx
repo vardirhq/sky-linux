@@ -1,65 +1,67 @@
 import {
   ArrowDown,
-  ArrowDownUp,
   ArrowLeftRight,
   ArrowUp,
   CheckCircle2,
   Clock,
   Database,
-  Download,
   FolderPlus,
-  MoreHorizontal,
-  Plus,
   RefreshCw,
   ShieldCheck,
+  TriangleAlert,
   Upload,
 } from "lucide-react";
-import { useMemo } from "react";
-import { api, pickFiles, pickFolders } from "@/lib/api";
-import { keys, useAction, useAccounts, useBackups, useHistory, useSyncPairs, useTransfers, useUsage } from "@/lib/hooks";
+import { api, pickFiles } from "@/lib/api";
+import { keys, useAction, useAccounts, useBackups, useHistory, useHome, useSyncPairs, useTransfers, useUsage } from "@/lib/hooks";
 import { SyncStateBadge } from "./sync";
 import { canWriteIn, DEFAULT_AREA, hasAreas } from "@/lib/areas";
 import type { HistoryEntry } from "@/lib/types";
-import { cn, formatBytes, greeting, percent, timeAgo } from "@/lib/utils";
+import { cn, formatBytes, greeting, percent, tildePath, timeAgo } from "@/lib/utils";
 import { useUi } from "@/store/ui";
-import { FileBrowser } from "@/components/file-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Menu } from "@/components/ui/menu";
 import { Progress } from "@/components/ui/progress";
-import { SkyLogo } from "@/components/layout";
 import { localizeError, t as tr, useT } from "@/i18n";
 import { PROVIDER_NAMES } from "@/lib/types";
 
+type Health =
+  | { kind: "attention"; lines: string[] }
+  | { kind: "busy"; count: number; done: number; total: number }
+  | { kind: "safe"; when: string | null }
+  | { kind: "empty" };
+
 export function Dashboard() {
   const account = useAccounts().data?.[0];
-  const usage = useUsage().data;
   const transfers = useTransfers().data ?? [];
   const backups = useBackups().data ?? [];
   const syncPairs = useSyncPairs().data ?? [];
-  const reviewing = syncPairs.filter((p) => p.state.kind === "needsReview");
-  const stats = useUi((s) => s.stats);
   const ui = useUi();
   const firstName = account?.displayName?.split(" ")[0];
   const t = useT();
   const provider = account ? PROVIDER_NAMES[account.provider] : "Telia Sky";
 
-  const running = transfers.filter((t) => t.state === "running" || t.state === "queued");
-  const runningBytes = running.reduce((a, t) => a + t.bytesDone, 0);
-  const runningTotal = running.reduce((a, t) => a + (t.bytesTotal ?? 0), 0);
-  const recent = useMemo(() => {
-    const dayAgo = Date.now() - 86_400_000;
-    const done = transfers.filter((t) => t.state === "completed" && new Date(t.startedAt).getTime() > dayAgo);
-    const sum = (dir: string) => done.filter((t) => t.direction === dir);
-    return {
-      up: sum("upload"),
-      down: sum("download"),
-      bytes: (dir: string) => sum(dir).reduce((a, t) => a + (t.bytesTotal ?? t.bytesDone), 0),
-    };
-  }, [transfers]);
-  const activeBackups = backups.filter((b) => b.enabled);
-  const healthy = activeBackups.every((b) => !b.lastError) && reviewing.length === 0;
+  const running = transfers.filter((x) => x.state === "running" || x.state === "queued");
+  const health: Health = (() => {
+    const failing = backups.filter((b) => b.enabled && b.lastError);
+    const review = syncPairs.filter((p) => p.state.kind === "needsReview" || p.state.kind === "error");
+    const lines = [
+      ...(ui.authExpired ? [t("dashboard.lineSignIn", { provider })] : []),
+      ...review.map((p) => t("dashboard.lineSync", { name: p.name })),
+      ...failing.map((b) => t("dashboard.lineBackup", { name: b.name })),
+    ];
+    if (lines.length) return { kind: "attention", lines };
+    if (running.length)
+      return {
+        kind: "busy",
+        count: running.length,
+        done: running.reduce((a, x) => a + x.bytesDone, 0),
+        total: running.reduce((a, x) => a + (x.bytesTotal ?? 0), 0),
+      };
+    if (!backups.length && !syncPairs.length) return { kind: "empty" };
+    const last = [...backups.map((b) => b.lastSuccess), ...syncPairs.map((p) => p.lastSync)].filter(Boolean).sort().pop() ?? null;
+    return { kind: "safe", when: last };
+  })();
 
   // Uploads go to the open folder, or to Archive when it can't take files
   // (the list of storage areas, or a read-only area such as Photos).
@@ -67,195 +69,171 @@ export function Dashboard() {
   const upload = useAction((p: string[]) => api.upload(p, uploadDir), [keys.transfers], t("files.toast.uploadStarted"));
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-6">
-      <section className="flex items-center gap-5">
-        <div className="grid size-16 place-items-center rounded-full bg-accent-soft">
-          <SkyLogo className="size-11" />
-        </div>
-        <div className="flex-1">
-          <h1 className="text-[28px] font-bold tracking-tight">
-            {greeting()}
-            {firstName ? `, ${firstName}` : ""}
-          </h1>
-          <p className="text-fg-muted">
-            {running.length
-              ? t("dashboard.syncingItems", { count: running.length })
-              : healthy
-                ? t("dashboard.allGood")
-                : t("dashboard.needsAttention")}
-          </p>
-        </div>
-        <Button variant="outline" size="lg" onClick={async () => upload.mutate(await pickFiles(t("files.uploadTo", { provider })))}>
+    <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto p-8">
+      <section className="flex items-center gap-4">
+        <h1 className="flex-1 text-[28px] font-bold tracking-tight">
+          {greeting()}
+          {firstName ? `, ${firstName}` : ""}
+        </h1>
+        <Button variant="primary" size="lg" onClick={async () => upload.mutate(await pickFiles(t("files.uploadTo", { provider })))}>
           <Upload /> {t("dashboard.upload")}
         </Button>
-        <Button variant="primary" size="lg" onClick={() => ui.setView("files")} title={t("dashboard.downloadHint")}>
-          <Download /> {t("dashboard.download")}
-        </Button>
-        <Menu
-          trigger={(p) => (
-            <Button size="lg" {...p}>
-              <Plus /> {t("dashboard.new")}
-            </Button>
-          )}
-          items={[
-            { label: t("dashboard.backupFolder"), icon: <ShieldCheck />, onSelect: () => ui.setView("backups") },
-            { label: t("dashboard.uploadFolder"), icon: <FolderPlus />, onSelect: async () => upload.mutate(await pickFolders(t("dashboard.uploadFolder"))) },
-          ]}
-        />
       </section>
 
-      <section className="grid grid-cols-4 gap-4">
-        <Card>
-          <CardHeader>
-            <Database className="size-5 text-fg-muted" />
-            <CardTitle>{t("dashboard.storage")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              <span className="font-semibold text-fg">{formatBytes(usage?.used)}</span>
-              {usage?.total ? t("dashboard.ofUsed", { total: formatBytes(usage.total) }) : t("dashboard.used")}
-            </p>
-            {usage?.total ? (
-              <div className="flex items-center gap-3">
-                <Progress value={percent(usage.used, usage.total)} label={t("dashboard.storageUsed")} />
-                <span className="text-sm tabular-nums text-fg-muted">{percent(usage.used, usage.total)}%</span>
-              </div>
-            ) : (
-              // Telia Sky reports only space used (seen on a real account),
-              // e.g. for plans with unlimited storage.
-              usage && <p className="text-xs text-fg-subtle">{t("dashboard.noLimit")}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <RefreshCw className="size-5 text-accent" />
-            <CardTitle>{t("dashboard.syncStatus")}</CardTitle>
-            {reviewing.length ? (
-              <Badge tone="warning" className="ml-auto">{t("dashboard.attention")}</Badge>
-            ) : running.length || syncPairs.some((p) => p.state.kind === "syncing") ? (
-              <Badge tone="accent" className="ml-auto">{t("dashboard.syncingBadge")}</Badge>
-            ) : (
-              <Badge tone="success" className="ml-auto">{t("dashboard.upToDateBadge")}</Badge>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <p className="text-sm text-fg-muted">
-              {running.length
-                ? t("dashboard.filesRemaining", {
-                    count: stats && stats.totalTransfers > stats.transfers ? stats.totalTransfers - stats.transfers : running.length,
-                    size: formatBytes(runningTotal - runningBytes),
-                  })
-                : t("dashboard.nothingWaiting")}
-            </p>
-            <Progress value={running.length ? percent(runningBytes, runningTotal) : 100} label={t("dashboard.syncProgress")} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <ArrowDownUp className="size-5 text-fg-muted" />
-            <CardTitle>{t("dashboard.recentTransfers")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-1.5 text-sm">
-            <p className="flex items-center gap-2">
-              <ArrowUp className="size-4 text-success" /> {t("dashboard.uploads", { count: recent.up.length, size: formatBytes(recent.bytes("upload")) })}
-            </p>
-            <p className="flex items-center gap-2">
-              <ArrowDown className="size-4 text-success" /> {t("dashboard.downloads", { count: recent.down.length, size: formatBytes(recent.bytes("download")) })}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <ShieldCheck className="size-5 text-success" />
-            <CardTitle>{t("dashboard.protectedFolders")}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <p className="text-sm text-fg-muted">
-              {t("dashboard.folders", { count: activeBackups.length })} •{" "}
-              {activeBackups.length ? t("dashboard.backupActive") : t("dashboard.noBackups")}
-            </p>
-            {activeBackups.length > 0 &&
-              (healthy ? (
-                <Badge tone="success">
-                  <CheckCircle2 /> {t("dashboard.protected")}
-                </Badge>
-              ) : (
-                <Badge tone="warning">{t("dashboard.attention")}</Badge>
-              ))}
-          </CardContent>
-        </Card>
-      </section>
+      <HealthCard health={health} onFolders={() => ui.setView("folders")} />
 
-      <section className="grid min-h-[420px] flex-1 grid-cols-[1fr_390px] gap-4">
-        <FileBrowser compact />
-        <div className="flex flex-col gap-4">
-          <Card>
-            <CardHeader className="border-b border-border">
-              <RefreshCw className="size-5 text-accent" />
-              <CardTitle>{t("dashboard.syncBackup")}</CardTitle>
-              <Button variant="ghost" size="icon" className="ml-auto" aria-label={t("dashboard.openBackups")} onClick={() => ui.setView("backups")}>
-                <MoreHorizontal />
-              </Button>
-            </CardHeader>
-            <CardContent className="space-y-3 pt-4 text-sm">
-              <div className="flex items-end justify-between">
-                <div>
-                  <p className="font-semibold">{t("dashboard.background")}</p>
-                  <p className="text-fg-muted">
-                    {running.length ? t("dashboard.uploadingChanges", { provider }) : t("dashboard.watching")}
-                  </p>
-                </div>
-                <span className="font-semibold tabular-nums">
-                  {running.length ? `${percent(runningBytes, runningTotal)}%` : ""}
-                </span>
-              </div>
-              <Progress value={running.length ? percent(runningBytes, runningTotal) : 100} />
-              <ul className="space-y-2 pt-1">
-                {syncPairs.slice(0, 2).map((p) => (
-                  <li key={p.id} className="flex items-center gap-2">
-                    <ArrowLeftRight className="size-4 text-fg-muted" />
-                    <button className="truncate hover:text-accent" onClick={() => ui.setView("sync")}>
-                      {p.name}
-                    </button>
-                    <span className="ml-auto">
-                      <SyncStateBadge pair={p} />
-                    </span>
-                  </li>
-                ))}
-                {activeBackups.slice(0, Math.max(1, 3 - syncPairs.length)).map((b) => (
-                  <li key={b.id} className="flex items-center gap-2">
-                    <ShieldCheck className="size-4 text-fg-muted" />
-                    <span className="truncate">{b.name}</span>
-                    <span className="ml-auto text-xs text-fg-subtle">{timeAgo(b.lastSuccess)}</span>
-                    {b.lastError ? (
-                      <span className="size-2 rounded-full bg-warning" />
-                    ) : (
-                      <CheckCircle2 className="size-4 text-success" />
-                    )}
-                  </li>
-                ))}
-                {!syncPairs.length && (
-                  <li>
-                    <Button variant="link" onClick={() => ui.setView("sync")}>
-                      {t("dashboard.syncCta")}
-                    </Button>
-                  </li>
-                )}
-                {!activeBackups.length && (
-                  <li>
-                    <Button variant="link" onClick={() => ui.setView("backups")}>
-                      {t("dashboard.protectCta")}
-                    </Button>
-                  </li>
-                )}
-              </ul>
-            </CardContent>
-          </Card>
-          <RecentActivity onMore={() => ui.setView("transfers")} />
+      <section className="grid gap-6 lg:grid-cols-[1fr_380px]">
+        <MyFolders onManage={() => ui.setView("folders")} />
+        <div className="flex flex-col gap-6">
+          <StorageCard />
+          <RecentActivity onMore={() => ui.setView("activity")} />
         </div>
       </section>
     </div>
+  );
+}
+
+/** The one thing to know: is everything safe? */
+function HealthCard({ health, onFolders }: { health: Health; onFolders: () => void }) {
+  const t = useT();
+  const tone =
+    health.kind === "attention"
+      ? "border-warning/40 bg-warning-soft"
+      : health.kind === "safe"
+        ? "border-success/30 bg-success-soft"
+        : "border-border bg-surface";
+  return (
+    <Card className={cn("flex items-center gap-5 p-6", tone)}>
+      <span className="grid size-14 shrink-0 place-items-center rounded-full bg-surface/70">
+        {health.kind === "attention" ? (
+          <TriangleAlert className="size-7 text-warning" />
+        ) : health.kind === "busy" ? (
+          <RefreshCw className="size-7 animate-spin text-accent [animation-duration:2.5s]" />
+        ) : health.kind === "safe" ? (
+          <ShieldCheck className="size-7 text-success" />
+        ) : (
+          <FolderPlus className="size-7 text-accent" />
+        )}
+      </span>
+      <div className="min-w-0 flex-1">
+        {health.kind === "attention" && (
+          <>
+            <p className="text-lg font-semibold">{t("dashboard.attentionTitle")}</p>
+            <ul className="text-fg-muted">
+              {health.lines.map((l) => (
+                <li key={l}>{l}</li>
+              ))}
+            </ul>
+          </>
+        )}
+        {health.kind === "busy" && (
+          <>
+            <p className="text-lg font-semibold">{t("dashboard.syncingItems", { count: health.count })}</p>
+            <div className="mt-2 flex items-center gap-3">
+              <Progress value={percent(health.done, health.total)} label={t("dashboard.syncProgress")} />
+              <span className="shrink-0 text-sm tabular-nums text-fg-muted">
+                {t("dashboard.remaining", { size: formatBytes(health.total - health.done) })}
+              </span>
+            </div>
+          </>
+        )}
+        {health.kind === "safe" && (
+          <>
+            <p className="text-lg font-semibold">{t("dashboard.safeTitle")}</p>
+            <p className="text-fg-muted">{health.when ? t("dashboard.safeWhen", { when: timeAgo(health.when) }) : t("dashboard.safeWaiting")}</p>
+          </>
+        )}
+        {health.kind === "empty" && (
+          <>
+            <p className="text-lg font-semibold">{t("dashboard.emptyTitle")}</p>
+            <p className="text-fg-muted">{t("dashboard.emptyBody")}</p>
+          </>
+        )}
+      </div>
+      {(health.kind === "attention" || health.kind === "empty") && (
+        <Button variant={health.kind === "empty" ? "primary" : "outline"} onClick={onFolders}>
+          {health.kind === "empty" ? t("dashboard.chooseFolders") : t("dashboard.seeFolders")}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
+function MyFolders({ onManage }: { onManage: () => void }) {
+  const t = useT();
+  const home = useHome().data;
+  const backups = useBackups().data ?? [];
+  const syncPairs = useSyncPairs().data ?? [];
+  const rows = [
+    ...syncPairs.map((p) => ({
+      id: p.id,
+      icon: <ArrowLeftRight className="size-5 text-accent" />,
+      name: p.name,
+      path: tildePath(p.localPath, home),
+      status: <SyncStateBadge pair={p} />,
+    })),
+    ...backups.map((b) => ({
+      id: b.id,
+      icon: <ShieldCheck className="size-5 text-success" />,
+      name: b.name,
+      path: tildePath(b.localPath, home),
+      status: !b.enabled ? (
+        <Badge>{t("sync.state.paused")}</Badge>
+      ) : b.lastError ? (
+        <Badge tone="warning">{t("dashboard.attention")}</Badge>
+      ) : (
+        <span className="text-xs text-fg-muted">{b.lastSuccess ? timeAgo(b.lastSuccess) : t("backups.waiting")}</span>
+      ),
+    })),
+  ];
+  return (
+    <Card>
+      <CardHeader className="border-b border-border">
+        <CardTitle>{t("dashboard.myFolders")}</CardTitle>
+        <Button variant="link" className="ml-auto" onClick={onManage}>
+          {t("dashboard.manage")}
+        </Button>
+      </CardHeader>
+      <CardContent className="divide-y divide-border pt-1">
+        {rows.map((r) => (
+          <div key={r.id} className="flex items-center gap-3 py-3 text-sm">
+            {r.icon}
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-medium">{r.name}</p>
+              <p className="truncate text-xs text-fg-muted">{r.path}</p>
+            </div>
+            {r.status}
+          </div>
+        ))}
+        {!rows.length && <p className="py-6 text-center text-sm text-fg-muted">{t("dashboard.noFolders")}</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StorageCard() {
+  const usage = useUsage().data;
+  const t = useT();
+  return (
+    <Card>
+      <CardHeader>
+        <Database className="size-5 text-fg-muted" />
+        <CardTitle>{t("dashboard.storage")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-fg-muted">
+          <span className="font-semibold text-fg">{formatBytes(usage?.used)}</span>
+          {usage?.total ? t("dashboard.ofUsed", { total: formatBytes(usage.total) }) : t("dashboard.used")}
+        </p>
+        {usage?.total ? (
+          <Progress value={percent(usage.used, usage.total)} label={t("dashboard.storageUsed")} />
+        ) : (
+          // Telia Sky reports only space used (seen on a real account),
+          // e.g. for plans with unlimited storage.
+          usage && <p className="text-xs text-fg-subtle">{t("dashboard.noLimit")}</p>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -320,7 +298,7 @@ function RecentActivity({ onMore }: { onMore: () => void }) {
         <Clock className="size-5 text-fg-muted" />
         <CardTitle>{t("dashboard.recentActivity")}</CardTitle>
         <Button variant="link" className="ml-auto" onClick={onMore}>
-          {t("dashboard.transferHistory")}
+          {t("dashboard.allActivity")}
         </Button>
       </CardHeader>
       <CardContent className="divide-y divide-border pt-1">

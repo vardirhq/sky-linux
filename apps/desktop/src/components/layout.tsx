@@ -2,20 +2,17 @@ import { EDITION } from "@/edition";
 import { useEffect, useRef } from "react";
 import {
   ArrowDown,
-  ArrowDownUp,
   ArrowUp,
   Bell,
   CheckCircle2,
-  Cloud,
   Clock,
   Folder,
+  FolderSync,
   History,
   LayoutDashboard,
-  Laptop,
   RefreshCw,
   Search,
   Settings,
-  ShieldCheck,
   TriangleAlert,
   X,
 } from "lucide-react";
@@ -31,11 +28,8 @@ import { PROVIDER_NAMES } from "@/lib/types";
 const NAV: { id: View; label: Key; icon: typeof Folder }[] = [
   { id: "dashboard", label: "nav.dashboard", icon: LayoutDashboard },
   { id: "files", label: "nav.files", icon: Folder },
-  { id: "backups", label: "nav.backups", icon: ShieldCheck },
-  { id: "sync", label: "nav.sync", icon: RefreshCw },
-  { id: "transfers", label: "nav.transfers", icon: ArrowDownUp },
-  { id: "history", label: "nav.history", icon: History },
-  { id: "devices", label: "nav.devices", icon: Laptop },
+  { id: "folders", label: "nav.folders", icon: FolderSync },
+  { id: "activity", label: "nav.activity", icon: History },
 ];
 
 export function SkyLogo({ className }: { className?: string }) {
@@ -45,7 +39,6 @@ export function SkyLogo({ className }: { className?: string }) {
 export function Sidebar() {
   const { view, setView } = useUi();
   const status = useStatus().data;
-  const account = useAccounts().data?.[0];
   const t = useT();
   const item = (n: (typeof NAV)[number]) => (
     <button
@@ -68,28 +61,14 @@ export function Sidebar() {
         <div className="my-2 border-t border-border" />
         {item({ id: "settings", label: "nav.settings", icon: Settings })}
       </nav>
-      <div className="mt-auto space-y-3 px-2 pb-1 text-sm">
-        {account && (
-          <div className="flex items-center gap-2.5">
-            <Cloud className="size-8 text-accent" strokeWidth={1.6} />
-            <div>
-              <div className="font-semibold">{PROVIDER_NAMES[account.provider]}</div>
-              <div className="text-xs text-fg-muted">{t("app.via")}</div>
-            </div>
-          </div>
-        )}
-        <div className="flex items-center gap-2 text-fg-muted">
-          <span className={cn("size-2.5 rounded-full", status?.rcloneRunning ? "bg-success" : "bg-warning")} />
-          {status?.rcloneRunning ? t("app.connected") : t("app.reconnecting")}
-        </div>
-        <div className="text-xs text-fg-subtle">{t("app.version", { version: status?.version ?? "—" })}</div>
-      </div>
+      {/* The connection is shown once, on the account button in the top bar. */}
+      <div className="mt-auto px-2 pb-1 text-xs text-fg-subtle">{t("app.version", { version: status?.version ?? "—" })}</div>
     </aside>
   );
 }
 
 export function TopBar() {
-  const { search, setSearch, setView, view } = useUi();
+  const { search, setSearch, setView, view, rcloneRunning } = useUi();
   const account = useAccounts().data?.[0];
   const t = useT();
   const ref = useRef<HTMLInputElement>(null);
@@ -137,7 +116,7 @@ export function TopBar() {
           </button>
         )}
       </label>
-      <Button variant="ghost" size="icon" aria-label={t("top.activity")} onClick={() => setView("history")}>
+      <Button variant="ghost" size="icon" aria-label={t("top.activity")} onClick={() => setView("activity")}>
         <Bell className="size-5" />
       </Button>
       {account && (
@@ -150,7 +129,13 @@ export function TopBar() {
           </span>
           <span className="text-left leading-tight">
             <span className="block text-sm font-semibold">{account.displayName ?? providerName}</span>
-            <span className="block text-xs text-fg-muted">{account.email ?? (account.displayName ? providerName : t("app.connected"))}</span>
+            {rcloneRunning ? (
+              <span className="block text-xs text-fg-muted">{account.email ?? (account.displayName ? providerName : t("app.connected"))}</span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-xs text-warning">
+                <span className="size-2 rounded-full bg-warning" /> {t("app.reconnecting")}
+              </span>
+            )}
           </span>
         </button>
       )}

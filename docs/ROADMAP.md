@@ -12,7 +12,7 @@
 
 ## Next concrete tasks
 
-1. Fetch the user's name and email after sign-in, for the greeting and avatar.
+1. Check on a real account that Telia's sign-in includes the name and email claims (the app falls back to "Telia Sky" without them).
 2. Fetch the user's name and email after sign-in (Jottacloud's user-info endpoint, or the `about` extras) for the greeting and avatar.
 3. Test notifications and start on login in a real desktop session (GNOME, KDE).
 4. Sign release packages.

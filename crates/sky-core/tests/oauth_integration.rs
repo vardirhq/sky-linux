@@ -91,7 +91,9 @@ async fn identity_server(state: Arc<Mutex<IdpState>>) -> String {
                             "200 OK",
                             serde_json::json!({
                                 "access_token": "AT-123", "refresh_token": "RT-456",
-                                "token_type": "Bearer", "expires_in": 300
+                                "token_type": "Bearer", "expires_in": 300,
+                                // {"name":"Kari Nordmann","email":"kari@example.no"}
+                                "id_token": "eyJhbGciOiJSUzI1NiJ9.eyJuYW1lIjoiS2FyaSBOb3JkbWFubiIsImVtYWlsIjoia2FyaUBleGFtcGxlLm5vIn0.sig"
                             }),
                         )
                     } else {
@@ -196,7 +198,10 @@ async fn sign_in_shows_our_page_and_returns_a_token() {
     assert!(html.contains("Du er logget inn"), "{html}");
     assert!(!html.to_lowercase().contains("rclone"));
 
-    let token: serde_json::Value = serde_json::from_str(&finish.await.unwrap().unwrap()).unwrap();
+    let signed_in = finish.await.unwrap().unwrap();
+    assert_eq!(signed_in.profile.name.as_deref(), Some("Kari Nordmann"));
+    assert_eq!(signed_in.profile.email.as_deref(), Some("kari@example.no"));
+    let token: serde_json::Value = serde_json::from_str(&signed_in.token).unwrap();
     assert_eq!(token["access_token"], "AT-123");
     assert_eq!(token["refresh_token"], "RT-456");
     let req = idp.lock().unwrap().token_requests[0].clone();
@@ -298,5 +303,48 @@ async fn rclone_accepts_our_token_without_its_own_sign_in() {
     );
     let stored: serde_json::Value = serde_json::from_str(cfg["token"].as_str().unwrap()).unwrap();
     assert_eq!(stored["refresh_token"], "RT-456");
+    core.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn accounts_signed_in_earlier_get_their_name_from_the_stored_token() {
+    let Some(rclone) = SupervisorConfig::find_binary() else {
+        eprintln!("rclone not found; skipping");
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let core = SkyCore::start(CoreOptions {
+        paths: AppPaths::rooted(dir.path().join("s")),
+        rclone_binary: rclone,
+        secrets: Arc::new(MemorySecretStore::default()),
+        encrypt_rclone_config: false,
+    })
+    .await
+    .unwrap();
+    // A Keycloak-style access token carrying the user's claims.
+    let access = "eyJhbGciOiJSUzI1NiJ9.eyJuYW1lIjoiS2FyaSBOb3JkbWFubiIsImVtYWlsIjoia2FyaUBleGFtcGxlLm5vIn0.sig";
+    let token = sky_core::oauth::rclone_token_json(access, Some("RT-456"), None, Some(300));
+    core.accounts
+        .create_remote_from_token(Provider::TeliaSkyNo, "sky-telia-no", &token)
+        .await
+        .unwrap();
+    let account = core
+        .accounts
+        .register_areas(
+            Provider::TeliaSkyNo,
+            "sky-telia-no",
+            vec!["Archive".into()],
+            sky_core::areas::AreaLayout::Mountpoints,
+        )
+        .await
+        .unwrap();
+    assert_eq!(account.display_name, None);
+
+    assert_eq!(core.accounts.fill_missing_profiles().await.unwrap(), 1);
+    let account = core.accounts.get(account.id).unwrap();
+    assert_eq!(account.display_name.as_deref(), Some("Kari Nordmann"));
+    assert_eq!(account.email.as_deref(), Some("kari@example.no"));
+    // Nothing left to fill in.
+    assert_eq!(core.accounts.fill_missing_profiles().await.unwrap(), 0);
     core.shutdown().await;
 }

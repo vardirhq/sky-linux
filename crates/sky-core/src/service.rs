@@ -92,6 +92,11 @@ impl SkyCore {
             Ok(n) => tracing::info!(n, "storage areas repaired"),
             Err(e) => tracing::error!("could not check storage areas: {e}"),
         }
+        match core.accounts.fill_missing_profiles().await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(n, "filled in account names"),
+            Err(e) => tracing::warn!("could not read account names: {e}"),
+        }
         core.spawn_background();
         let resumed = core.transfers.resume_interrupted().await?;
         if resumed > 0 {

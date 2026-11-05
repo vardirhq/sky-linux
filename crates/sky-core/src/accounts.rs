@@ -15,7 +15,7 @@ use crate::db::Database;
 use crate::error::{CoreError, Result};
 use crate::events::{Event, EventBus};
 use crate::models::Account;
-use crate::oauth::{OAuthService, PageLanguage, SignIn, REDIRECT_PORT};
+use crate::oauth::{profile_from_jwt, OAuthService, PageLanguage, Profile, SignIn, REDIRECT_PORT};
 use crate::provider::Provider;
 use crate::rclone::{remote_fs, JottacloudWithToken, RcloneSupervisor};
 use serde_json::json;
@@ -112,7 +112,8 @@ impl AccountManager {
                 .flatten()
                 .as_deref(),
         );
-        let token = sign_in.finish(lang, provider.display_name()).await?;
+        let signed_in = sign_in.finish(lang, provider.display_name()).await?;
+        let token = signed_in.token;
 
         // 2. Hand the token to rclone, which owns and refreshes it.
         let base = provider.remote_name();
@@ -128,8 +129,14 @@ impl AccountManager {
 
         // 4. One tree over all storage areas (Archive, Photos, …).
         let areas: Vec<String> = JOTTA_AREAS.iter().map(|a| a.to_string()).collect();
-        self.register_areas(provider, &base, areas, AreaLayout::Mountpoints)
-            .await
+        self.register_areas_as(
+            provider,
+            &base,
+            areas,
+            AreaLayout::Mountpoints,
+            signed_in.profile,
+        )
+        .await
     }
 
     /// Join the storage areas of `base_remote` into one `combine` remote and
@@ -141,6 +148,19 @@ impl AccountManager {
         base_remote: &str,
         areas: Vec<String>,
         layout: AreaLayout,
+    ) -> Result<Account> {
+        self.register_areas_as(provider, base_remote, areas, layout, Profile::default())
+            .await
+    }
+
+    /// [`Self::register_areas`] for a known user (name and e-mail).
+    pub async fn register_areas_as(
+        &self,
+        provider: Provider,
+        base_remote: &str,
+        areas: Vec<String>,
+        layout: AreaLayout,
+        profile: Profile,
     ) -> Result<Account> {
         let client = self.rclone.client();
         let combined = combined_name(base_remote);
@@ -159,8 +179,8 @@ impl AccountManager {
             provider,
             remote: combined,
             areas,
-            display_name: None,
-            email: None,
+            display_name: profile.name,
+            email: profile.email,
             connected_at: Utc::now(),
         };
         self.db.insert_account(&account)?;
@@ -208,6 +228,39 @@ impl AccountManager {
             repaired += 1;
         }
         Ok(repaired)
+    }
+
+    /// Fill in the name and e-mail of accounts signed in before Sky Linux
+    /// recorded them, from the claims of the access token rclone stores.
+    /// No network request. Returns how many accounts were updated.
+    pub async fn fill_missing_profiles(&self) -> Result<usize> {
+        let client = self.rclone.client();
+        let mut n = 0;
+        for account in self.list()? {
+            if account.display_name.is_some() || account.email.is_some() {
+                continue;
+            }
+            let Ok(cfg) = client
+                .call("config/get", json!({ "name": base_remote(&account) }))
+                .await
+            else {
+                continue;
+            };
+            let access = cfg
+                .get("token")
+                .and_then(|t| t.as_str())
+                .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+                .and_then(|t| t.get("access_token")?.as_str().map(String::from));
+            let Some(access) = access else { continue };
+            let p = profile_from_jwt(&access);
+            if p.is_empty() {
+                continue;
+            }
+            self.db
+                .set_account_profile(account.id, p.name.as_deref(), p.email.as_deref())?;
+            n += 1;
+        }
+        Ok(n)
     }
 
     /// Create the rclone remote for `provider` from a token obtained by

@@ -129,6 +129,21 @@ impl Database {
         })
     }
 
+    pub fn set_account_profile(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<()> {
+        self.with(|c| {
+            c.execute(
+                "UPDATE accounts SET display_name = ?2, email = ?3 WHERE id = ?1",
+                params![id, name, email],
+            )?;
+            Ok(())
+        })
+    }
+
     pub fn accounts(&self) -> Result<Vec<Account>> {
         self.with(|c| {
             let mut st = c.prepare("SELECT * FROM accounts ORDER BY connected_at")?;

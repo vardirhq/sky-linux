@@ -1,23 +1,13 @@
 import { useState } from "react";
-import {
-  ArrowDown,
-  ArrowUp,
-  FolderPlus,
-  Laptop,
-  Pause,
-
-  RefreshCw,
-  ShieldCheck,
-  Trash2,
-  X,
-} from "lucide-react";
-import { api, copyText, pickFolders } from "@/lib/api";
+import { ArrowDown, ArrowUp, FolderOpen, MoreHorizontal, Pause, Play, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
+import { api, copyText, openFolder, pickFolders } from "@/lib/api";
 import { setAutostart } from "@/lib/autostart";
 import { useQuery } from "@tanstack/react-query";
 import { useUi } from "@/store/ui";
-import { keys, useAccounts, useAction, useBackups, useHistory, useSetting, useStatus, useTransfers } from "@/lib/hooks";
-import type { Schedule, Transfer } from "@/lib/types";
-import { cn, formatBytes, formatDate, formatEta, formatSpeed, percent, timeAgo } from "@/lib/utils";
+import { keys, useAccounts, useAction, useHistory, useHome, useSetting, useStatus, useTransfers } from "@/lib/hooks";
+import type { BackupJob, Transfer } from "@/lib/types";
+import { cn, formatBytes, formatDate, formatEta, formatSpeed, percent, tildePath, timeAgo } from "@/lib/utils";
+import { Menu } from "@/components/ui/menu";
 import { FileBrowser, EmptyState } from "@/components/file-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,7 +16,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import { ActivityIcon, describeHistory } from "./dashboard";
-import { LOCALES, isLocale, localizeError, t as tr, useLocale, useT } from "@/i18n";
+import { LOCALES, isLocale, localizeError, useLocale, useT } from "@/i18n";
 import { PROVIDER_NAMES } from "@/lib/types";
 import { defaultRemote, displayPath } from "@/lib/areas";
 
@@ -35,7 +25,7 @@ function useProvider() {
   return a ? PROVIDER_NAMES[a.provider] : "Telia Sky";
 }
 
-function Page({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: React.ReactNode; children: React.ReactNode }) {
+export function Page({ title, subtitle, actions, children }: { title: string; subtitle?: string; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-6">
       <div className="flex items-end gap-4">
@@ -58,24 +48,100 @@ export function FilesView() {
   );
 }
 
-const scheduleLabel = (s: Schedule) =>
-  s.kind === "onChange"
-    ? tr("backups.onChange")
-    : s.kind === "interval"
-      ? tr("backups.every", { count: s.minutes })
-      : tr("backups.manual");
+/** A folder backed up to the cloud (upload-only). */
+export function BackupCard({ job }: { job: BackupJob }) {
+  const t = useT();
+  const provider = useProvider();
+  const account = useAccounts().data?.[0];
+  const home = useHome().data;
+  const [confirm, setConfirm] = useState(false);
+  const toggle = useAction((enabled: boolean) => api.setBackupEnabled(job.id, enabled), [keys.backups]);
+  const run = useAction(() => api.runBackup(job.id), [keys.backups], t("backups.toast.finished"));
+  const remove = useAction(() => api.deleteBackup(job.id), [keys.backups], t("backups.toast.removed"));
+  return (
+    <Card>
+      <CardHeader>
+        <ShieldCheck className={cn("size-5", job.enabled ? "text-success" : "text-fg-subtle")} />
+        <CardTitle>{job.name}</CardTitle>
+        <span className="ml-auto">
+          {!job.enabled ? (
+            <Badge>{t("sync.state.paused")}</Badge>
+          ) : job.lastError ? (
+            <Badge tone="warning">{t("dashboard.attention")}</Badge>
+          ) : job.lastSuccess ? (
+            <Badge tone="success">{t("folders.backedUp")}</Badge>
+          ) : (
+            <Badge tone="accent">{t("backups.waiting")}</Badge>
+          )}
+        </span>
+      </CardHeader>
+      <CardContent className="space-y-3 text-sm">
+        <div>
+          <p className="truncate" title={job.localPath}>{tildePath(job.localPath, home)}</p>
+          <p className="truncate text-fg-muted">{t("folders.backedUpTo", { place: `${provider} / ${displayPath(account, job.remotePath)}` })}</p>
+        </div>
+        {job.lastError && (
+          <p className="text-xs text-fg-muted">
+            <span className="font-medium text-warning">{localizeError(job.lastError).title}.</span> {localizeError(job.lastError).message}
+          </p>
+        )}
+        <div className="flex items-center gap-2 pt-1">
+          <Button size="sm" onClick={() => run.mutate(undefined)} disabled={run.isPending || !job.enabled}>
+            <RefreshCw /> {t("backups.runNow")}
+          </Button>
+          <span className="text-fg-muted">{job.lastSuccess ? t("folders.lastBackup", { when: timeAgo(job.lastSuccess) }) : ""}</span>
+          <span className="ml-auto">
+            <Menu
+              trigger={(p) => (
+                <Button size="sm" variant="ghost" aria-label={t("folders.more", { name: job.name })} {...p}>
+                  <MoreHorizontal />
+                </Button>
+              )}
+              items={[
+                { label: t("sync.openFolder"), icon: <FolderOpen />, onSelect: () => openFolder(job.localPath) },
+                job.enabled
+                  ? { label: t("folders.pause"), icon: <Pause />, onSelect: () => toggle.mutate(false) }
+                  : { label: t("folders.resume"), icon: <Play />, onSelect: () => toggle.mutate(true) },
+                { label: t("backups.remove"), icon: <Trash2 />, danger: true, onSelect: () => setConfirm(true) },
+              ]}
+            />
+          </span>
+        </div>
+      </CardContent>
+      <Dialog
+        open={confirm}
+        onClose={() => setConfirm(false)}
+        title={t("folders.removeBackupTitle", { name: job.name })}
+        footer={
+          <>
+            <Button onClick={() => setConfirm(false)}>{t("files.cancel")}</Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                remove.mutate(undefined);
+                setConfirm(false);
+              }}
+            >
+              {t("backups.remove")}
+            </Button>
+          </>
+        }
+      >
+        {t("folders.removeBackupBody", { provider })}
+      </Dialog>
+    </Card>
+  );
+}
 
-export function BackupsView() {
-  const backups = useBackups().data ?? [];
+/** Starting a backup of a folder. Returns the action and the dialog to render. */
+export function useBackupAdder() {
   const account = useAccounts().data?.[0];
   const [adding, setAdding] = useState<string | null>(null);
   const [remote, setRemote] = useState("");
   const t = useT();
   const provider = useProvider();
+  const home = useHome().data;
   const create = useAction(api.createBackup, [keys.backups], t("backups.toast.created"));
-  const toggle = useAction(({ id, enabled }: { id: string; enabled: boolean }) => api.setBackupEnabled(id, enabled), [keys.backups]);
-  const run = useAction(api.runBackup, [keys.backups], t("backups.toast.finished"));
-  const remove = useAction(api.deleteBackup, [keys.backups], t("backups.toast.removed"));
 
   const choose = async () => {
     const [p] = await pickFolders(t("backups.choose"));
@@ -84,93 +150,47 @@ export function BackupsView() {
     setRemote(defaultRemote(account, `Backup/${p.split("/").filter(Boolean).pop() ?? "Folder"}`));
   };
 
-  return (
-    <Page
-      title={t("backups.title")}
-      subtitle={t("backups.subtitle", { provider })}
-      actions={
-        <Button variant="primary" onClick={choose} disabled={!account}>
-          <FolderPlus /> {t("backups.add")}
-        </Button>
+  const dialog = (
+    <Dialog
+      open={!!adding}
+      onClose={() => setAdding(null)}
+      title={t("backups.dialogTitle")}
+      footer={
+        <>
+          <Button onClick={() => setAdding(null)}>{t("files.cancel")}</Button>
+          <Button
+            variant="primary"
+            disabled={!remote.trim()}
+            onClick={() => {
+              if (adding && account) create.mutate({ accountId: account.id, localPath: adding, remotePath: remote.trim() });
+              setAdding(null);
+            }}
+          >
+            {t("backups.start")}
+          </Button>
+        </>
       }
     >
-      {backups.length === 0 ? (
-        <Card>
-          <EmptyState title={t("backups.emptyTitle")} message={t("backups.emptyBody")} />
-        </Card>
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-4">
-          {backups.map((b) => (
-            <Card key={b.id}>
-              <CardHeader>
-                <ShieldCheck className={cn("size-5", b.enabled ? "text-success" : "text-fg-subtle")} />
-                <CardTitle>{b.name}</CardTitle>
-                <div className="ml-auto">
-                  <Switch label={t("backups.enable", { name: b.name })} checked={b.enabled} onChange={(enabled) => toggle.mutate({ id: b.id, enabled })} />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <p className="truncate text-fg-muted" title={b.localPath}>{b.localPath}</p>
-                <p className="truncate">→ {provider} / {displayPath(account, b.remotePath)}</p>
-                <div className="flex flex-wrap gap-2 pt-1">
-                  <Badge>{scheduleLabel(b.schedule)}</Badge>
-                  {b.lastError ? (
-                    <Badge tone="warning" title={localizeError(b.lastError).message}>{localizeError(b.lastError).title}</Badge>
-                  ) : b.lastSuccess ? (
-                    <Badge tone="success">{t("backups.lastBackup", { when: timeAgo(b.lastSuccess) })}</Badge>
-                  ) : (
-                    <Badge tone="accent">{t("backups.waiting")}</Badge>
-                  )}
-                </div>
-                {b.lastError && <p className="text-xs text-fg-muted">{localizeError(b.lastError).message}</p>}
-                <div className="flex gap-2 pt-2">
-                  <Button size="sm" onClick={() => run.mutate(b.id)} disabled={run.isPending}>
-                    <RefreshCw /> {t("backups.runNow")}
-                  </Button>
-                  <Button size="sm" variant="ghost" className="ml-auto text-danger" onClick={() => remove.mutate(b.id)}>
-                    <Trash2 /> {t("backups.remove")}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-      <Dialog
-        open={!!adding}
-        onClose={() => setAdding(null)}
-        title={t("backups.dialogTitle")}
-        footer={
-          <>
-            <Button onClick={() => setAdding(null)}>{t("files.cancel")}</Button>
-            <Button
-              variant="primary"
-              disabled={!remote.trim()}
-              onClick={() => {
-                if (adding && account) create.mutate({ accountId: account.id, localPath: adding, remotePath: remote.trim() });
-                setAdding(null);
-              }}
-            >
-              {t("backups.start")}
-            </Button>
-          </>
-        }
-      >
-        <p className="mb-1 text-fg-muted">{t("backups.localFolder")}</p>
-        <p className="mb-4 font-medium">{adding}</p>
-        <label className="mb-1 block text-fg-muted" htmlFor="remote">{t("backups.saveAs", { provider })}</label>
-        <input id="remote" value={remote} onChange={(e) => setRemote(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-surface px-3 outline-none focus:border-accent" />
-        <p className="mt-3 text-xs text-fg-muted">{t("backups.dialogHint")}</p>
-      </Dialog>
-    </Page>
+      <p className="mb-1 text-fg-muted">{t("backups.localFolder")}</p>
+      <p className="mb-4 font-medium" title={adding ?? ""}>{tildePath(adding ?? "", home)}</p>
+      <label className="mb-1 block text-fg-muted" htmlFor="remote">{t("backups.saveAs", { provider })}</label>
+      <input id="remote" value={remote} onChange={(e) => setRemote(e.target.value)} className="h-10 w-full rounded-lg border border-border bg-surface px-3 outline-none focus:border-accent" />
+      <p className="mt-3 text-xs text-fg-muted">{t("backups.dialogHint")}</p>
+    </Dialog>
   );
+  return { choose, dialog };
 }
 
 function TransferRow({ t }: { t: Transfer }) {
   const cancel = useAction(api.cancelTransfer, [keys.transfers]);
   const tt = useT();
+  const account = useAccounts().data?.[0];
+  const home = useHome().data;
+  const provider = useProvider();
   const active = t.state === "running" || t.state === "queued";
   const name = t.source.split("/").filter(Boolean).pop();
+  // Uploads go to a cloud path ("Archive/…"), downloads to a local one.
+  const to = t.direction === "upload" ? `${provider} / ${displayPath(account, t.destination)}` : tildePath(t.destination, home);
   return (
     <div className="flex items-center gap-4 border-b border-border px-5 py-3 last:border-0 text-sm">
       <span className={cn("grid size-9 place-items-center rounded-full", t.direction === "upload" ? "bg-success-soft text-success" : "bg-accent-soft text-accent")}>
@@ -178,9 +198,7 @@ function TransferRow({ t }: { t: Transfer }) {
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate font-medium">{name}</p>
-        <p className="truncate text-xs text-fg-muted">
-          {tt("transfers.to", { path: t.destination })}
-        </p>
+        <p className="truncate text-xs text-fg-muted">{tt("transfers.to", { path: to })}</p>
         {active && <Progress className="mt-2 h-1.5" value={percent(t.bytesDone, t.bytesTotal)} />}
       </div>
       <div className="w-44 text-right text-xs tabular-nums text-fg-muted">
@@ -190,87 +208,49 @@ function TransferRow({ t }: { t: Transfer }) {
             <p>{formatSpeed(t.speed)} {formatEta(t.etaSeconds) && `• ${formatEta(t.etaSeconds)}`}</p>
           </>
         ) : (
-          <>
-            <p>{formatBytes(t.bytesTotal ?? t.bytesDone)}</p>
-            <p>{formatDate(t.finishedAt ?? t.startedAt)}</p>
-          </>
+          <p>{t.state === "interrupted" ? tt("transfers.resuming") : formatBytes(t.bytesTotal ?? t.bytesDone)}</p>
         )}
       </div>
       <div className="w-28 text-right">
-        {active ? (
+        {active && (
           <Button size="sm" variant="ghost" onClick={() => cancel.mutate(t.id)}>
             <X /> {tt("transfers.cancel")}
           </Button>
-        ) : t.state === "completed" ? (
-          <Badge tone="success">{tt("transfers.completed")}</Badge>
-        ) : t.state === "failed" ? (
-          <Badge tone="danger" title={t.error ? localizeError(t.error).message : undefined}>{tt("transfers.failed")}</Badge>
-        ) : (
-          <Badge>{t.state === "interrupted" ? tt("transfers.resuming") : tt("transfers.cancelled")}</Badge>
         )}
       </div>
     </div>
   );
 }
 
-export function TransfersView() {
+/** What is happening now (transfers in progress), then everything that happened. */
+export function ActivityView() {
   const transfers = useTransfers().data ?? [];
-  const active = transfers.filter((t) => t.state === "running" || t.state === "queued" || t.state === "interrupted");
-  const done = transfers.filter((x) => !active.includes(x));
-  const t = useT();
-  return (
-    <Page title={t("transfers.title")} subtitle={t("transfers.subtitle")}>
-      <Card>
-        <CardHeader className="border-b border-border"><CardTitle>{t("transfers.active", { count: active.length })}</CardTitle></CardHeader>
-        {active.length ? active.map((x) => <TransferRow key={x.id} t={x} />) : <p className="px-5 py-6 text-sm text-fg-muted">{t("transfers.idle")}</p>}
-      </Card>
-      <Card>
-        <CardHeader className="border-b border-border"><CardTitle>{t("transfers.recent")}</CardTitle></CardHeader>
-        {done.length ? done.map((x) => <TransferRow key={x.id} t={x} />) : <p className="px-5 py-6 text-sm text-fg-muted">{t("transfers.none")}</p>}
-      </Card>
-    </Page>
-  );
-}
-
-export function HistoryView() {
   const history = useHistory().data ?? [];
+  const active = transfers.filter((t) => t.state === "running" || t.state === "queued" || t.state === "interrupted");
   const t = useT();
   return (
-    <Page title={t("history.title")} subtitle={t("history.subtitle")}>
+    <Page title={t("activity.title")} subtitle={t("activity.subtitle")}>
+      {active.length > 0 && (
+        <Card>
+          <CardHeader className="border-b border-border"><CardTitle>{t("transfers.active", { count: active.length })}</CardTitle></CardHeader>
+          {active.map((x) => <TransferRow key={x.id} t={x} />)}
+        </Card>
+      )}
       <Card>
         {history.length === 0 && <EmptyState title={t("history.emptyTitle")} message={t("history.emptyBody")} />}
         {history.map((h) => {
           const d = describeHistory(h);
+          const size = h.event.type === "transferUpdated" && h.event.data.state === "completed" ? formatBytes(h.event.data.bytesTotal) : "";
           return (
             <div key={h.id} className="flex items-center gap-3 border-b border-border px-5 py-3 text-sm last:border-0">
               <ActivityIcon kind={d.icon} />
               <p className="min-w-0 flex-1 truncate"><span className="font-semibold">{d.title}</span> {d.detail}</p>
-              <span className="text-xs text-fg-muted">{formatDate(h.at)}</span>
+              {size && <span className="text-xs tabular-nums text-fg-muted">{size}</span>}
+              <span className="w-36 text-right text-xs text-fg-muted">{formatDate(h.at)}</span>
             </div>
           );
         })}
       </Card>
-    </Page>
-  );
-}
-
-export function DevicesView() {
-  const status = useStatus().data;
-  const t = useT();
-  const provider = useProvider();
-  return (
-    <Page title={t("devices.title")} subtitle={t("devices.subtitle")}>
-      <Card>
-        <CardContent className="flex items-center gap-4 pt-5">
-          <Laptop className="size-10 text-accent" strokeWidth={1.5} />
-          <div className="flex-1">
-            <p className="font-semibold">{t("devices.thisComputer")}</p>
-            <p className="text-sm text-fg-muted">{t("devices.summary", { count: status?.backupJobs ?? 0, version: status?.version ?? "" })}</p>
-          </div>
-          <Badge tone="success">{t("devices.online")}</Badge>
-        </CardContent>
-      </Card>
-      <p className="text-sm text-fg-muted">{t("devices.future", { provider })}</p>
     </Page>
   );
 }
