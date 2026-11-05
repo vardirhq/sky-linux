@@ -38,3 +38,23 @@ First run on a real Telia Sky account (2026-11-04, rclone v1.75.2, CachyOS):
 - **License:** GPL-3.0-or-later is proposed. MIT or Apache would make a future commercial collaboration simpler. This needs deciding before the first external contribution.
 - **OAuth client:** rclone uses the `desktop` client id for `telia_no`. Shipping the same client in a separate product may need Telia's blessing, and is a topic for phase 6 outreach.
 - **Branding:** we describe compatibility ("for Telia Sky") and never use Telia's logo or styling.
+
+## Real-account run with Sky Linux itself (5 November 2026)
+
+Sky Linux 0.1.0 (the installed `.deb`, rclone v1.75.2) against a real Telia Sky account, signed in with Sky Linux's own sign-in. The account holds 60.8 GiB (4,250 files), all in Photos. Write tests ran in a scratch folder in Archive, which was deleted afterwards.
+
+| Check | Result |
+| --- | --- |
+| Sign-in (authorization code + PKCE), all four areas found | ✅ |
+| Areas listed through the combined remote match each mountpoint listed on its own | ✅ after the fix below; ❌ before |
+| Storage used | ✅ 65.3 GB after the fix below; 261 GB (4×) before. The plan reports no total or free space; the UI shows "no storage limit". |
+| Upload/download (12 MB + small file), sha256 identical; second download becomes `name (1).ext` | ✅ |
+| Files landed in Archive, checked with rclone outside Sky Linux; nothing in Photos | ✅ |
+| Create folder, move + rename, delete; writing to Photos is refused | ✅ |
+| Backup is upload-only (a deleted local file stays in the cloud) | ✅ |
+| Two-way sync: up, down, deletion both ways, recovery folder, conflict (newer wins, other kept as a numbered copy) | ✅ One bisync run aborted once and succeeded on the automatic retry 3 seconds later; the cause wasn't captured. |
+| Token renewal: expired token renewed on use, the new refresh token saved, still valid after a restart, no `invalid_grant` across areas | ✅ |
+
+**Bug found and fixed: areas could be mixed up.** rclone caches backends by a name built from the *registered* options a connection string overrides. `mountpoint` isn't one for jottacloud, so `sky-telia-no,mountpoint=Archive:` and `sky-telia-no,mountpoint=Photos:` shared one cache entry. Within one rclone process, "Archive" randomly listed Photos' content (seen in 3 of 5 runs). Writes would have been just as unpredictable. Each area's connection string now also sets `description=<area>`, a registered option, which gives every area its own cache entry (5 of 5 runs correct). Existing installs are repaired when the daemon starts. No writes were made before the fix.
+
+**Bug found and fixed: storage counted once per area.** Every area reports the whole account's usage, so `about` on the combined remote returned 4× the real figure. Usage is now read from the signed-in remote.

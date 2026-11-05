@@ -7,7 +7,14 @@
 //! empty. Sky Core therefore joins all areas into one rclone `combine`
 //! remote, so every path starts with its area: `Photos/2025/IMG_1.jpg`.
 //! All areas share the signed-in remote (and its token) through connection
-//! strings such as `sky-telia-no,mountpoint=Photos:`.
+//! strings such as `sky-telia-no,mountpoint=Photos,description=Photos:`.
+//!
+//! The `description` is not decoration. rclone caches backends by a name
+//! built from the *registered* options a connection string overrides, and
+//! `mountpoint` is not one for jottacloud. Without a second, registered
+//! option that differs per area, all four connection strings share one cache
+//! entry, so within one rclone process "Archive" could list (or write into)
+//! "Photos". Seen on a real Telia Sky account with rclone v1.75.2.
 
 use crate::error::{CoreError, Result};
 use crate::models::Account;
@@ -35,7 +42,9 @@ impl AreaLayout {
     /// rclone fs string for one area.
     pub fn upstream(self, base_remote: &str, area: &str) -> String {
         match self {
-            AreaLayout::Mountpoints => format!("{base_remote},mountpoint={area}:"),
+            AreaLayout::Mountpoints => {
+                format!("{base_remote},mountpoint={area},description={area}:")
+            }
             AreaLayout::Subfolders => format!("{base_remote}:{area}"),
         }
     }
@@ -48,6 +57,12 @@ pub fn combine_upstreams(base_remote: &str, areas: &[String], layout: AreaLayout
         .map(|a| format!("\"{a}={}\"", layout.upstream(base_remote, a)))
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+/// Whether a combine remote's `upstreams` was written before areas got a
+/// `description` (see the module docs) and must be rewritten.
+pub fn upstreams_need_repair(upstreams: &str) -> bool {
+    upstreams.contains(",mountpoint=") && !upstreams.contains(",description=")
 }
 
 /// The area a cloud path belongs to, if the account has areas.
@@ -112,6 +127,24 @@ pub fn check_writable_target(account: &Account, path: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_area_gets_its_own_rclone_cache_entry() {
+        let u = combine_upstreams(
+            "sky-telia-no",
+            &["Archive".into(), "Photos".into()],
+            AreaLayout::Mountpoints,
+        );
+        assert_eq!(
+            u,
+            "\"Archive=sky-telia-no,mountpoint=Archive,description=Archive:\" \"Photos=sky-telia-no,mountpoint=Photos,description=Photos:\""
+        );
+        assert!(!upstreams_need_repair(&u));
+        assert!(upstreams_need_repair(
+            "\"Archive=sky-telia-no,mountpoint=Archive:\" \"Photos=sky-telia-no,mountpoint=Photos:\""
+        ));
+        assert!(!upstreams_need_repair("\"Archive=cloud:Archive\""));
+    }
     use crate::provider::Provider;
 
     fn account(areas: &[&str]) -> Account {
@@ -133,10 +166,6 @@ mod tests {
     #[test]
     fn builds_combine_upstreams() {
         let areas = vec!["Archive".to_string(), "Photos".to_string()];
-        assert_eq!(
-            combine_upstreams("sky-telia-no", &areas, AreaLayout::Mountpoints),
-            r#""Archive=sky-telia-no,mountpoint=Archive:" "Photos=sky-telia-no,mountpoint=Photos:""#
-        );
         assert_eq!(
             combine_upstreams("cloud", &areas, AreaLayout::Subfolders),
             r#""Archive=cloud:Archive" "Photos=cloud:Photos""#
