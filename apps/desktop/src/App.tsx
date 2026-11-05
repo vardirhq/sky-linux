@@ -13,8 +13,8 @@ import type { ReactNode } from "react";
 import { isLocale, useLocale, useT } from "@/i18n";
 import { Dashboard } from "@/views/dashboard";
 import { Onboarding } from "@/views/onboarding";
-import { BackupsView, DevicesView, FilesView, HistoryView, SettingsView, TransfersView } from "@/views/pages";
-import { SyncView } from "@/views/sync";
+import { ActivityView, FilesView, SettingsView } from "@/views/pages";
+import { FoldersView } from "@/views/folders";
 
 function useTheme() {
   const theme = useSetting<string>("theme").data;
@@ -150,11 +150,8 @@ export default function App() {
   const View = {
     dashboard: Dashboard,
     files: FilesView,
-    backups: BackupsView,
-    sync: SyncView,
-    transfers: TransfersView,
-    history: HistoryView,
-    devices: DevicesView,
+    folders: FoldersView,
+    activity: ActivityView,
     settings: SettingsView,
   }[view];
 

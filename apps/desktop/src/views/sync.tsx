@@ -1,18 +1,17 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, FolderCheck, FolderOpen, FolderPlus, LifeBuoy, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
+import { ArrowLeftRight, FolderCheck, FolderOpen, LifeBuoy, MoreHorizontal, Pause, Play, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
 import { api, homeDir, openFolder, pickFolders } from "@/lib/api";
-import { keys, useAccounts, useAction, useHome, useSyncPairs } from "@/lib/hooks";
+import { keys, useAccounts, useAction, useHome } from "@/lib/hooks";
 import { PROVIDER_NAMES, type SyncPair } from "@/lib/types";
 import { cn, formatBytes, tildePath, timeAgo } from "@/lib/utils";
 import { defaultRemote, displayPath } from "@/lib/areas";
 import { localizeError, useT } from "@/i18n";
-import { EmptyState } from "@/components/file-browser";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog } from "@/components/ui/dialog";
-import { Switch } from "@/components/ui/switch";
+import { Menu } from "@/components/ui/menu";
 
 /** Default local folder name, as users know the service. */
 export const DEFAULT_SYNC_FOLDER = "Telia Sky";
@@ -76,7 +75,7 @@ function ReviewPanel({ pair }: { pair: SyncPair }) {
   );
 }
 
-function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
+export function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
   const t = useT();
   const [confirm, setConfirm] = useState(false);
   const [recovering, setRecovering] = useState(false);
@@ -92,47 +91,50 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
       <CardHeader>
         <ArrowLeftRight className={cn("size-5", pair.enabled ? "text-accent" : "text-fg-subtle")} />
         <CardTitle>{pair.name}</CardTitle>
-        <SyncStateBadge pair={pair} />
-        <div className="ml-auto">
-          <Switch label={t("sync.pause", { name: pair.name })} checked={pair.enabled} onChange={(v) => toggle.mutate(v)} />
-        </div>
+        <span className="ml-auto">
+          <SyncStateBadge pair={pair} />
+        </span>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 rounded-lg bg-surface-muted px-3 py-2.5">
+        <div>
           <p className="truncate" title={pair.localPath}>{tildePath(pair.localPath, home)}</p>
-          <ArrowLeftRight className="size-4 text-fg-subtle" />
-          <p className="truncate text-right">{provider} / {displayPath(account, pair.remotePath)}</p>
+          <p className="truncate text-fg-muted">{t("folders.syncedWith", { place: `${provider} / ${displayPath(account, pair.remotePath)}` })}</p>
         </div>
         <ReviewPanel pair={pair} />
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-fg-muted">
-          <span>{pair.lastSync ? t("sync.lastSync", { when: timeAgo(pair.lastSync) }) : t("sync.never")}</span>
-          {s && (
-            <span className="tabular-nums">
-              {t("sync.summary", { up: s.uploaded, down: s.downloaded, deleted: s.deletedLocal + s.deletedRemote })}
-            </span>
-          )}
-          {s && s.conflicts > 0 && <Badge tone="warning">{t("sync.conflicts", { count: s.conflicts })}</Badge>}
-          {pair.excluded.length > 0 && <Badge>{t("sync.folders.excludedN", { count: pair.excluded.length })}</Badge>}
-        </div>
         {pair.state.kind === "error" && pair.lastError && (
           <p className="text-xs text-fg-muted">{localizeError(pair.lastError).message}</p>
         )}
-        <div className="flex flex-wrap gap-2 pt-1">
+        {/* Only what needs attention gets a badge. */}
+        {s && s.conflicts > 0 && <Badge tone="warning">{t("sync.conflicts", { count: s.conflicts })}</Badge>}
+        <div className="flex items-center gap-2 pt-1">
           <Button size="sm" onClick={() => run.mutate(undefined)} disabled={!pair.enabled || pair.state.kind === "syncing"}>
             <RefreshCw /> {t("sync.syncNow")}
           </Button>
-          <Button size="sm" variant="ghost" aria-label={t("sync.openFolder")} title={t("sync.openFolder")} onClick={() => openFolder(pair.localPath)}>
-            <FolderOpen />
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setChoosing(true)}>
-            <FolderCheck /> {t("sync.folders.button")}
-          </Button>
-          <Button size="sm" variant="ghost" onClick={() => setRecovering(true)}>
-            <LifeBuoy /> {t("sync.recovery")}
-          </Button>
-          <Button size="sm" variant="ghost" className="ml-auto text-danger" onClick={() => setConfirm(true)}>
-            <Unlink /> {t("sync.remove")}
-          </Button>
+          <span className="text-fg-muted">{pair.lastSync ? t("sync.lastSync", { when: timeAgo(pair.lastSync) }) : t("sync.never")}</span>
+          <span className="ml-auto">
+            <Menu
+              trigger={(p) => (
+                <Button size="sm" variant="ghost" aria-label={t("folders.more", { name: pair.name })} {...p}>
+                  <MoreHorizontal />
+                </Button>
+              )}
+              items={[
+                { label: t("sync.openFolder"), icon: <FolderOpen />, onSelect: () => openFolder(pair.localPath) },
+                {
+                  label: pair.excluded.length
+                    ? `${t("sync.folders.button")} (${t("sync.folders.excludedN", { count: pair.excluded.length })})`
+                    : t("sync.folders.button"),
+                  icon: <FolderCheck />,
+                  onSelect: () => setChoosing(true),
+                },
+                { label: t("sync.recovery"), icon: <LifeBuoy />, onSelect: () => setRecovering(true) },
+                pair.enabled
+                  ? { label: t("folders.pause"), icon: <Pause />, onSelect: () => toggle.mutate(false) }
+                  : { label: t("folders.resume"), icon: <Play />, onSelect: () => toggle.mutate(true) },
+                { label: t("sync.remove"), icon: <Unlink />, danger: true, onSelect: () => setConfirm(true) },
+              ]}
+            />
+          </span>
         </div>
       </CardContent>
       {choosing && <FoldersDialog pair={pair} onClose={() => setChoosing(false)} />}
@@ -162,9 +164,10 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
   );
 }
 
-export function SyncView() {
+/** Starting a two-way sync: the "Telia Sky" folder, or a folder of choice.
+ * Returns the actions and the dialog to render. */
+export function useSyncAdder() {
   const t = useT();
-  const pairs = useSyncPairs().data ?? [];
   const account = useAccounts().data?.[0];
   const provider = account ? PROVIDER_NAMES[account.provider] : "Telia Sky";
   const [draft, setDraft] = useState<{ local: string; remote: string; create: boolean } | null>(null);
@@ -180,80 +183,51 @@ export function SyncView() {
     if (p) setDraft({ local: p, remote: defaultRemote(account, p.split("/").filter(Boolean).pop() ?? DEFAULT_SYNC_FOLDER), create: false });
   };
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-6">
-      <div className="flex items-end gap-4">
-        <div className="flex-1">
-          <h1 className="text-2xl font-bold tracking-tight">{t("sync.title")}</h1>
-          <p className="text-fg-muted">{t("sync.subtitle", { provider })}</p>
-        </div>
-        <Button variant="primary" onClick={pairs.length ? choose : startDefault} disabled={!account}>
-          <FolderPlus /> {t("sync.add")}
-        </Button>
+  const dialog = (
+    <Dialog
+      open={!!draft}
+      onClose={() => setDraft(null)}
+      title={t("sync.dialogTitle")}
+      footer={
+        <>
+          <Button onClick={() => setDraft(null)}>{t("files.cancel")}</Button>
+          <Button
+            variant="primary"
+            disabled={!draft?.remote.trim()}
+            onClick={() => {
+              if (draft && account)
+                create.mutate({
+                  accountId: account.id,
+                  localPath: draft.local,
+                  remotePath: draft.remote.trim(),
+                  createLocal: draft.create,
+                });
+              setDraft(null);
+            }}
+          >
+            {t("sync.start")}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-1 text-fg-muted">{t("sync.localFolder")}</p>
+      <div className="mb-4 flex items-center gap-2">
+        <p className="flex-1 truncate font-medium" title={draft?.local}>{tildePath(draft?.local ?? "", home)}</p>
+        <Button size="sm" variant="ghost" onClick={choose}>{t("sync.change")}</Button>
       </div>
-
-      {pairs.length === 0 ? (
-        <Card>
-          <EmptyState title={t("sync.emptyTitle")} message={t("sync.emptyBody")} />
-          <div className="flex justify-center gap-2 pb-8">
-            <Button variant="primary" onClick={startDefault} disabled={!account}>
-              <FolderPlus /> {t("sync.createDefault", { name: DEFAULT_SYNC_FOLDER })}
-            </Button>
-            <Button onClick={choose} disabled={!account}>{t("sync.chooseLocal")}</Button>
-          </div>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(440px,1fr))] gap-4">
-          {pairs.map((p) => (
-            <PairCard key={p.id} pair={p} provider={provider} />
-          ))}
-        </div>
-      )}
-
-      <Dialog
-        open={!!draft}
-        onClose={() => setDraft(null)}
-        title={t("sync.dialogTitle")}
-        footer={
-          <>
-            <Button onClick={() => setDraft(null)}>{t("files.cancel")}</Button>
-            <Button
-              variant="primary"
-              disabled={!draft?.remote.trim()}
-              onClick={() => {
-                if (draft && account)
-                  create.mutate({
-                    accountId: account.id,
-                    localPath: draft.local,
-                    remotePath: draft.remote.trim(),
-                    createLocal: draft.create,
-                  });
-                setDraft(null);
-              }}
-            >
-              {t("sync.start")}
-            </Button>
-          </>
-        }
-      >
-        <p className="mb-1 text-fg-muted">{t("sync.localFolder")}</p>
-        <div className="mb-4 flex items-center gap-2">
-          <p className="flex-1 truncate font-medium" title={draft?.local}>{tildePath(draft?.local ?? "", home)}</p>
-          <Button size="sm" variant="ghost" onClick={choose}>{t("sync.change")}</Button>
-        </div>
-        <label className="mb-1 block text-fg-muted" htmlFor="sync-remote">
-          {t("sync.remoteFolder", { provider })}
-        </label>
-        <input
-          id="sync-remote"
-          value={draft?.remote ?? ""}
-          onChange={(e) => draft && setDraft({ ...draft, remote: e.target.value })}
-          className="h-10 w-full rounded-lg border border-border bg-surface px-3 outline-none focus:border-accent"
-        />
-        <p className="mt-3 text-xs text-fg-muted">{t("sync.dialogHint")}</p>
-      </Dialog>
-    </div>
+      <label className="mb-1 block text-fg-muted" htmlFor="sync-remote">
+        {t("sync.remoteFolder", { provider })}
+      </label>
+      <input
+        id="sync-remote"
+        value={draft?.remote ?? ""}
+        onChange={(e) => draft && setDraft({ ...draft, remote: e.target.value })}
+        className="h-10 w-full rounded-lg border border-border bg-surface px-3 outline-none focus:border-accent"
+      />
+      <p className="mt-3 text-xs text-fg-muted">{t("sync.dialogHint")}</p>
+    </Dialog>
   );
+  return { startDefault, choose, dialog };
 }
 
 /** Files sync removed from this computer, and a way to put them back. */

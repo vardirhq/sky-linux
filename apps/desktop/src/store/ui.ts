@@ -1,15 +1,9 @@
 import { create } from "zustand";
 import type { LiveStats, UserError } from "@/lib/types";
 
-export type View =
-  | "dashboard"
-  | "files"
-  | "backups"
-  | "sync"
-  | "transfers"
-  | "history"
-  | "devices"
-  | "settings";
+/** The five places in the app. Backups and two-way sync share "folders";
+ * transfers and history share "activity". */
+export type View = "dashboard" | "files" | "folders" | "activity" | "settings";
 
 interface Toast {
   id: number;

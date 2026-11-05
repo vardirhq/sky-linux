@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeftRight, Check, CheckCircle2, Cloud, FolderPlus, Loader2, ShieldCheck, Trash2 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { api, homeDir, openExternal, pickFolders, SkyError } from "@/lib/api";
+import { api, homeDir, openExternal, pickFolders, picturesDir, SkyError } from "@/lib/api";
 import { DEFAULT_SYNC_FOLDER } from "./sync";
 import { defaultRemote, displayPath } from "@/lib/areas";
 import { Switch } from "@/components/ui/switch";
@@ -25,7 +25,10 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [syncPath, setSyncPath] = useState("");
   useEffect(() => {
     homeDir().then((h) => setSyncPath(`${h}/${DEFAULT_SYNC_FOLDER}`));
+    // Suggest backing up Pictures, ticked: the folder most people want safe.
+    picturesDir().then((p) => p && setFolders((f) => (f.length ? f : [p])));
   }, []);
+  const home = syncPath.slice(0, syncPath.lastIndexOf("/"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const authUrl = useUi((s) => s.authUrl);
@@ -54,7 +57,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       }
       for (const f of folders) {
         const name = f.split("/").filter(Boolean).pop() ?? "Folder";
-        await api.createBackup({ accountId: account!.id, localPath: f, remotePath: defaultRemote(account, `Backup/${name}`) });
+        try {
+          await api.createBackup({ accountId: account!.id, localPath: f, remotePath: defaultRemote(account, `Backup/${name}`) });
+        } catch (e) {
+          // The suggested Pictures folder may not exist on this computer.
+          if (e instanceof SkyError && e.info.rule === "folder_missing") continue;
+          throw e;
+        }
       }
       setStep(3);
     } catch (e) {
@@ -126,7 +135,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               <ArrowLeftRight className="mt-0.5 size-5 shrink-0 text-accent" />
               <div className="flex-1 text-sm">
                 <p className="font-semibold">{t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })}</p>
-                <p className="text-fg-muted">{t("onboarding.syncOptionBody", { path: tildePath(syncPath, syncPath.slice(0, syncPath.lastIndexOf("/"))), remote: displayPath(account, defaultRemote(account, DEFAULT_SYNC_FOLDER)) })}</p>
+                <p className="text-fg-muted">{t("onboarding.syncOptionBody", { path: tildePath(syncPath, home), remote: displayPath(account, defaultRemote(account, DEFAULT_SYNC_FOLDER)) })}</p>
               </div>
               <Switch label={t("onboarding.syncOption", { name: DEFAULT_SYNC_FOLDER })} checked={syncFolder} onChange={setSyncFolder} />
             </div>
@@ -141,7 +150,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
               {folders.map((f) => (
                 <li key={f} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm">
                   <FolderPlus className="size-4 text-accent" />
-                  <span className="flex-1 truncate">{f}</span>
+                  <span className="flex-1 truncate" title={f}>{tildePath(f, home)}</span>
                   <button aria-label={t("onboarding.removeFolder", { path: f })} onClick={() => setFolders(folders.filter((x) => x !== f))}>
                     <Trash2 className="size-4 text-fg-muted" />
                   </button>

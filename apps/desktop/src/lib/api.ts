@@ -208,6 +208,17 @@ export async function copyText(text: string): Promise<void> {
   if (!ok) throw new Error("clipboard unavailable");
 }
 
+/** The user's Pictures folder (XDG), suggested for backup at first run. */
+export async function picturesDir(): Promise<string | null> {
+  if (!isTauri()) return "/home/ola/Bilder";
+  try {
+    const { pictureDir } = await import("@tauri-apps/api/path");
+    return (await pictureDir()).replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 export async function defaultDownloadDir(): Promise<string> {
   const saved = await api.getSetting<string>("downloadDir").catch(() => null);
   if (saved) return saved;
