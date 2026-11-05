@@ -220,8 +220,10 @@ fn redact_home(s: &str, home: Option<&Path>) -> String {
 }
 
 /// rclone logs at INFO don't contain tokens, but a line that mentions one
-/// is dropped whole rather than trusted.
+/// is dropped whole rather than trusted. Terminal colour codes (bisync
+/// colours its output) are removed.
 fn redact_log_line(l: &str) -> String {
+    let l = strip_ansi(l);
     let lower = l.to_ascii_lowercase();
     if ["token", "password", "secret", "authorization", "pass="]
         .iter()
@@ -229,8 +231,28 @@ fn redact_log_line(l: &str) -> String {
     {
         "[line hidden: it may contain sign-in details]".into()
     } else {
-        l.to_string()
+        l
     }
+}
+
+/// Remove `ESC [ … letter` sequences.
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            if chars.next() == Some('[') {
+                for c in chars.by_ref() {
+                    if c.is_ascii_alphabetic() {
+                        break;
+                    }
+                }
+            }
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// `PRETTY_NAME` from os-release, e.g. "Ubuntu 24.04.1 LTS".
@@ -288,6 +310,7 @@ mod tests {
             "2026/11/05 INFO  : Archive/Pictures/a.jpg: Copied (new)".to_string(),
             "DEBUG : refresh token=abc123".to_string(),
             "INFO : wrote /home/kari/.config/x".to_string(),
+            "INFO  : \u{1b}[32mBisync successful\u{1b}[0m".to_string(),
         ];
         let d = build(&DiagnosticsInput {
             version: "0.1.0",
@@ -306,6 +329,7 @@ mod tests {
         assert!(r.contains("Bandwidth limit: 5 MB/s"));
         assert!(r.contains("~/Pictures → Archive/Pictures"));
         assert!(r.contains("~/.config/x"));
+        assert!(r.contains("INFO  : Bisync successful\n"), "{r}");
         assert!(!r.contains("kari"), "{r}");
         assert!(!r.contains("Kari"), "{r}");
         assert!(!r.contains("abc123"), "{r}");

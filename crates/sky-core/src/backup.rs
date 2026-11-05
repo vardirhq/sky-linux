@@ -269,6 +269,10 @@ impl BackupManager {
         if !job.local_path.is_dir() {
             // Removable drive unplugged or folder moved: skip, don't fail
             // loudly and — crucially — don't treat it as "everything deleted".
+            let already_missing = job
+                .last_error
+                .as_ref()
+                .is_some_and(|e| e.rule.as_deref() == Some("folder_unavailable"));
             job.last_error = Some(
                 CoreError::rule(
                     "folder_unavailable",
@@ -281,7 +285,13 @@ impl BackupManager {
                 .to_user(),
             );
             self.db.upsert_backup_job(&job)?;
-            self.bus.publish(Event::BackupFinished(job.clone()));
+            let ev = Event::BackupFinished(job.clone());
+            // Into the history once, when the folder goes missing, not on
+            // every scheduled run while a drive is unplugged.
+            if !already_missing {
+                self.db.record_event(&ev)?;
+            }
+            self.bus.publish(ev);
             return Ok(job);
         }
 

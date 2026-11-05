@@ -6,7 +6,7 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 
 ![Sky Linux dashboard](docs/screenshots/dashboard.png)
 
-> **Status: early development (roadmap phases 0–2).** The core engine, background daemon and desktop UI are in place and tested against a real rclone process. Validation against a real Telia Sky account is the next step; see [docs/FEASIBILITY.md](docs/FEASIBILITY.md).
+> **Status: early development (roadmap phases 0–2).** The core engine, background daemon and desktop UI are in place, tested against a real rclone process and, on 5 November 2026, against a real Telia Sky account (results in [docs/FEASIBILITY.md](docs/FEASIBILITY.md)).
 >
 > Sky Linux is independent software. It is **not affiliated with, endorsed by or supported by Telia or Jottacloud.**
 
@@ -14,9 +14,9 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 
 | Area | State |
 | --- | --- |
-| Telia Sky sign-in (browser OAuth via rclone's `telia_no` white-label) | Implemented; still needs testing with a real account |
+| Telia Sky sign-in (Sky Linux's own browser sign-in, `telia_no` white-label) | ✅ tested with a real account, including token renewal |
 | Browse, search, rename, move, create folders, delete files (to trash) | ✅ tested end-to-end |
-| All storage areas (Arkiv, Bilder, Delt, Synk) as top-level folders; Bilder and Delt read-only for now | ✅ tested end-to-end (on the real account, all files were in Bilder) |
+| All storage areas (Arkiv, Bilder, Delt, Synk) as top-level folders; Bilder and Delt read-only for now | ✅ tested on a real account |
 | Uploads & downloads with live progress, speed and ETA; cancel | ✅ |
 | Downloads never overwrite local files (`name (1).ext`) | ✅ |
 | Upload-only backups (on change / interval / manual); never delete remote files | ✅ |
@@ -26,7 +26,7 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 | Background daemon that keeps running after the window closes | ✅ |
 | Encrypted rclone config, with the password kept in the Secret Service keyring | ✅ |
 | Norwegian Bokmål (default) and English UI, including translated Sky Core errors | ✅ |
-| Two-way sync (Dropbox-style `~/Telia Sky` folder) with recovery folder, delete limit, missing-folder protection and conflict copies | ✅ tested end-to-end |
+| Two-way sync (Dropbox-style `~/Telia Sky` folder) with recovery folder, delete limit, missing-folder protection and conflict copies | ✅ tested end-to-end and on a real account |
 | DEB / RPM / AppImage packages | ✅ Built, installed and run; release workflow on tags (`docs/PACKAGING.md`) |
 | Flatpak / AUR | Drafts in `packaging/` |
 

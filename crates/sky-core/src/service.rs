@@ -87,6 +87,11 @@ impl SkyCore {
             backups,
             sync,
         });
+        match core.accounts.repair_areas().await {
+            Ok(0) => {}
+            Ok(n) => tracing::info!(n, "storage areas repaired"),
+            Err(e) => tracing::error!("could not check storage areas: {e}"),
+        }
         core.spawn_background();
         let resumed = core.transfers.resume_interrupted().await?;
         if resumed > 0 {
@@ -242,7 +247,10 @@ impl SkyCore {
 
     pub async fn usage(&self, account: Option<Uuid>) -> Result<StorageUsage> {
         let account = self.account_or_default(account)?;
-        let r = self.client().about(&remote_fs(&account.remote, "")).await;
+        // Every area reports the whole account's usage, so a combined
+        // remote would count it once per area.
+        let fs = remote_fs(crate::accounts::base_remote(&account), "");
+        let r = self.client().about(&fs).await;
         self.observe(&account, r)
     }
 

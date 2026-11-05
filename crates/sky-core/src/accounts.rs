@@ -27,6 +27,18 @@ fn combined_name(base_remote: &str) -> String {
     format!("{base_remote}{COMBINED_SUFFIX}")
 }
 
+/// The signed-in remote an account's combined remote is built on, or the
+/// account's own remote when it has no areas.
+pub fn base_remote(account: &Account) -> &str {
+    if account.areas.is_empty() {
+        return &account.remote;
+    }
+    account
+        .remote
+        .strip_suffix(COMBINED_SUFFIX)
+        .unwrap_or(&account.remote)
+}
+
 #[derive(Clone)]
 pub struct AccountManager {
     db: Database,
@@ -158,6 +170,46 @@ impl AccountManager {
         Ok(account)
     }
 
+    /// Rewrite combined remotes created before areas had their own rclone
+    /// cache entry (see [`crate::areas`]). Returns how many were repaired.
+    pub async fn repair_areas(&self) -> Result<usize> {
+        let client = self.rclone.client();
+        let mut repaired = 0;
+        for account in self.list()? {
+            if account.areas.is_empty() {
+                continue;
+            }
+            let cfg = client
+                .call("config/get", json!({ "name": account.remote }))
+                .await?;
+            let Some(upstreams) = cfg.get("upstreams").and_then(|u| u.as_str()) else {
+                continue;
+            };
+            if !crate::areas::upstreams_need_repair(upstreams) {
+                continue;
+            }
+            client
+                .call(
+                    "config/update",
+                    json!({
+                        "name": account.remote,
+                        "parameters": {
+                            "upstreams": combine_upstreams(
+                                base_remote(&account),
+                                &account.areas,
+                                AreaLayout::Mountpoints,
+                            )
+                        },
+                        "opt": { "nonInteractive": true },
+                    }),
+                )
+                .await?;
+            tracing::warn!(remote = %account.remote, "repaired storage areas");
+            repaired += 1;
+        }
+        Ok(repaired)
+    }
+
     /// Create the rclone remote for `provider` from a token obtained by
     /// [`SignIn`], without rclone opening any browser page itself.
     pub async fn create_remote_from_token(
@@ -221,14 +273,7 @@ impl AccountManager {
         let client = self.rclone.client();
         let remotes = client.list_remotes().await?;
         // The combined remote and the signed-in remote it is built on.
-        let base = (!account.areas.is_empty())
-            .then(|| {
-                account
-                    .remote
-                    .strip_suffix(COMBINED_SUFFIX)
-                    .map(str::to_owned)
-            })
-            .flatten();
+        let base = (!account.areas.is_empty()).then(|| base_remote(&account).to_owned());
         for r in std::iter::once(account.remote.clone()).chain(base) {
             if remotes.contains(&r) {
                 client.delete_remote(&r).await?;

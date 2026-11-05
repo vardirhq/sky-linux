@@ -492,3 +492,43 @@ async fn diagnostics_report_over_ipc() {
     assert!(report.contains("rclone: v"), "{report}");
     core.shutdown().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn missing_backup_folder_is_recorded_once_in_history() {
+    let Some(env) = env() else { return };
+    let core = start(&env).await;
+    let account = connect(&core, &env).await;
+    let pics = env.local.join("Pictures");
+    std::fs::create_dir_all(&pics).unwrap();
+    let job = core
+        .backups
+        .create(NewBackupJob {
+            account_id: account.id,
+            name: None,
+            local_path: pics.clone(),
+            remote_path: "Backup/Pictures".into(),
+            schedule: Schedule::Manual,
+            exclude: vec![],
+        })
+        .await
+        .unwrap();
+    std::fs::remove_dir_all(&pics).unwrap();
+    for _ in 0..3 {
+        let j = core.backups.run_now(job.id).await.unwrap();
+        assert_eq!(
+            j.last_error.unwrap().rule.as_deref(),
+            Some("folder_unavailable")
+        );
+    }
+    let failures = core
+        .history(100)
+        .unwrap()
+        .into_iter()
+        .filter(|h| {
+            matches!(&h.event, sky_core::events::Event::BackupFinished(b)
+                if b.last_error.is_some())
+        })
+        .count();
+    assert_eq!(failures, 1);
+    core.shutdown().await;
+}
