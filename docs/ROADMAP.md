@@ -7,7 +7,7 @@
 | 2 Desktop MVP | Login, browsing, manual up/download, transfer progress, error handling | ✅ UI in place. Norwegian (default) and English done. Still to do: polish from real-account testing |
 | 3 Background backups | Folder selection, upload-only jobs, file watching, schedules, restart recovery | ✅ Core done. Still to do: notifications for failed backups, bandwidth limits, pause on metered networks |
 | 4 Two-way sync | Evaluate `rclone bisync`; conflicts, deletion protection, extensive integration tests | ✅ Core and UI done, 7 end-to-end safety tests. Still to do: test against real Jottacloud, a "restore from recovery folder" view, selective sync |
-| 5 Distribution | Release CI for deb/rpm/AppImage on x86_64 + arm64, Flatpak validation, AUR | Configs drafted |
+| 5 Distribution | Release CI for deb/rpm/AppImage on x86_64 + arm64, Flatpak validation, AUR | deb/rpm/AppImage built, installed and run; release workflow (draft releases, glibc 2.35 check). Still to do: real-desktop test, arm64, Flatpak, AUR |
 | 6 Public release | Docs site, community feedback, more providers, contact Telia/Jottacloud | — |
 
 ## Next concrete tasks

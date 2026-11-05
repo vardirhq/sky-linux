@@ -29,25 +29,36 @@ pub struct SupervisorConfig {
 
 impl SupervisorConfig {
     /// Locate rclone: `$SKY_RCLONE`, next to our executable (bundled), then `$PATH`.
+    ///
+    /// Packages install a private, tested rclone at
+    /// `<prefix>/lib/sky-linux/rclone`. It must win over an `rclone` next to
+    /// our binary: in `/usr/bin` that is the distribution's rclone, which
+    /// may be another version.
     pub fn find_binary() -> Option<PathBuf> {
         if let Some(p) = std::env::var_os("SKY_RCLONE") {
             return Some(PathBuf::from(p));
         }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                for cand in [dir.join("rclone"), dir.join("../lib/sky-linux/rclone")] {
-                    if cand.is_file() {
-                        return Some(cand);
-                    }
-                }
-            }
-        }
-        std::env::var_os("PATH").and_then(|paths| {
-            std::env::split_paths(&paths)
-                .map(|d| d.join("rclone"))
-                .find(|p| p.is_file())
-        })
+        let exe_dir = std::env::current_exe()
+            .ok()
+            .and_then(|e| e.parent().map(PathBuf::from));
+        let path = std::env::var_os("PATH")
+            .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+            .unwrap_or_default();
+        rclone_candidates(exe_dir.as_deref(), &path)
+            .into_iter()
+            .find(|p| p.is_file())
     }
+}
+
+/// Where to look for rclone, best first.
+fn rclone_candidates(exe_dir: Option<&std::path::Path>, path: &[PathBuf]) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    if let Some(dir) = exe_dir {
+        out.push(dir.join("../lib/sky-linux/rclone")); // deb, rpm, AppImage
+        out.push(dir.join("rclone")); // development builds (Tauri sidecar dir)
+    }
+    out.extend(path.iter().map(|d| d.join("rclone")));
+    out
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +319,22 @@ fn passthrough_env() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bundled_rclone_wins_over_one_next_to_the_binary() {
+        let root = tempfile::tempdir().unwrap();
+        let bin = root.path().join("usr/bin");
+        let lib = root.path().join("usr/lib/sky-linux");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::create_dir_all(&lib).unwrap();
+        std::fs::write(bin.join("rclone"), "distro").unwrap();
+        std::fs::write(lib.join("rclone"), "bundled").unwrap();
+        let found = rclone_candidates(Some(&bin), std::slice::from_ref(&bin))
+            .into_iter()
+            .find(|p| p.is_file())
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(found).unwrap(), "bundled");
+    }
 
     #[test]
     fn env_passthrough_drops_rclone_vars() {

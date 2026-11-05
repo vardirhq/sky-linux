@@ -47,14 +47,11 @@
     ],
     "linux": {
       "deb": {
-        "depends": [
-          "libwebkit2gtk-4.1-0",
-          "libayatana-appindicator3-1"
-        ],
         "files": {
           "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
           "/usr/lib/sky-linux/rclone": "binaries/rclone"
-        }
+        },
+        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs"
       },
       "rpm": {
         "depends": [
@@ -64,8 +61,15 @@
         "files": {
           "/usr/lib/systemd/user/sky-daemon.service": "../../../packaging/systemd/sky-daemon.service",
           "/usr/lib/sky-linux/rclone": "binaries/rclone"
+        },
+        "desktopTemplate": "../../../packaging/linux/sky-linux.desktop.hbs"
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib/sky-linux/rclone": "binaries/rclone"
         }
       }
-    }
+    },
+    "publisher": "Sky Linux contributors"
   }
 }

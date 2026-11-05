@@ -25,7 +25,7 @@ Browse your cloud files, back up folders automatically, and keep an eye on trans
 | Encrypted rclone config, with the password kept in the Secret Service keyring | ✅ |
 | Norwegian Bokmål (default) and English UI, including translated Sky Core errors | ✅ |
 | Two-way sync (Dropbox-style `~/Telia Sky` folder) with recovery folder, delete limit, missing-folder protection and conflict copies | ✅ tested end-to-end |
-| DEB / RPM / AppImage packages | Configured (Tauri bundler); release CI to do |
+| DEB / RPM / AppImage packages | ✅ Built, installed and run; release workflow on tags (`docs/PACKAGING.md`) |
 | Flatpak / AUR | Drafts in `packaging/` |
 
 ## Architecture in one picture

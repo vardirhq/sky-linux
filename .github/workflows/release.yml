@@ -1,0 +1,152 @@
+name: Release
+
+# Builds .deb, .rpm and .AppImage packages.
+# - On a tag `v*`: builds and attaches the packages to a GitHub release.
+# - Manually (Actions → Release → Run workflow): builds and keeps the
+#   packages as workflow artifacts, for testing before tagging.
+#
+# Packages are built on Ubuntu 22.04 so they run on distributions with
+# glibc 2.35 or newer (Ubuntu 22.04+, Debian 12+, Mint 21+, Fedora 36+).
+# arm64 builds need GitHub's ARM runners; enable them by setting the
+# repository variable ENABLE_ARM64 to "true".
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RCLONE_VERSION: v1.75.2
+  # Packages must not need a newer glibc than this.
+  MAX_GLIBC: "2.35"
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        run: |
+          amd64='{"runner":"ubuntu-22.04","target":"x86_64-unknown-linux-gnu","arch":"amd64"}'
+          arm64='{"runner":"ubuntu-22.04-arm","target":"aarch64-unknown-linux-gnu","arch":"arm64"}'
+          if [[ "${{ vars.ENABLE_ARM64 }}" == "true" ]]; then
+            echo "matrix={\"include\":[$amd64,$arm64]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\":[$amd64]}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check that the tag matches the app version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          app=$(python3 -c 'import json; print(json.load(open("apps/desktop/src-tauri/tauri.conf.json")).get("version") or "")')
+          [[ -z "$app" ]] && app=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          tag="${GITHUB_REF_NAME#v}"
+          if [[ "$app" != "$tag" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match the app version $app"
+            exit 1
+          fi
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev \
+            libssl-dev file patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+
+      - name: Build sky-daemon and fetch the checksummed rclone
+        run: TARGET=${{ matrix.target }} scripts/prepare-sidecars.sh
+
+      - name: Build packages
+        working-directory: apps/desktop
+        env:
+          # linuxdeploy is itself an AppImage; runners have no FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: npx tauri build --target ${{ matrix.target }}
+
+      - name: Check glibc compatibility
+        run: |
+          dir=target/${{ matrix.target }}/release
+          need=$(for b in "$dir/sky-linux" "$dir/sky-daemon"; do
+                   objdump -T "$b" | grep -o 'GLIBC_[0-9.]*' | sed 's/GLIBC_//'
+                 done | sort -Vu | tail -1)
+          echo "Newest glibc symbol needed: $need (max $MAX_GLIBC)"
+          if [[ "$(printf '%s\n%s\n' "$need" "$MAX_GLIBC" | sort -V | tail -1)" != "$MAX_GLIBC" ]]; then
+            echo "::error::Packages need glibc $need, newer than $MAX_GLIBC"
+            exit 1
+          fi
+
+      - name: Collect packages
+        id: collect
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          bundle=target/${{ matrix.target }}/release/bundle
+          mkdir -p dist
+          cp "$bundle"/deb/*.deb "dist/sky-linux_${version}_${{ matrix.arch }}.deb"
+          cp "$bundle"/rpm/*.rpm "dist/sky-linux-${version}-1.$(uname -m).rpm"
+          cp "$bundle"/appimage/*.AppImage "dist/sky-linux_${version}_${{ matrix.arch }}.AppImage"
+          (cd dist && sha256sum * > "SHA256SUMS-${{ matrix.arch }}")
+          ls -la dist
+
+      - name: Smoke-test the .deb
+        run: |
+          sudo apt-get install -y ./dist/*.deb
+          test -x /usr/lib/sky-linux/rclone
+          /usr/lib/sky-linux/rclone version | head -1
+          sky-daemon --version
+          test -f /usr/lib/systemd/user/sky-daemon.service
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sky-linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Sky Linux ${GITHUB_REF_NAME#v}" \
+            --generate-notes \
+            --draft
