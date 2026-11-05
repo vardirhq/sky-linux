@@ -270,6 +270,40 @@ impl SyncManager {
         Ok(())
     }
 
+    /// Files in a pair's recovery folder, newest first.
+    pub fn recovery_files(&self, id: Uuid) -> Result<Vec<crate::recovery::RecoveredFile>> {
+        crate::recovery::list(&self.db.sync_pair(id)?.recovery_path)
+    }
+
+    /// Move files from the recovery folder back into the synced folder
+    /// (never overwriting), then sync so they return to the cloud too.
+    pub async fn restore(&self, id: Uuid, paths: Vec<String>) -> Result<usize> {
+        let restored = {
+            // No sync run may move files while we do.
+            let lock = self.locks.lock().await.entry(id).or_default().clone();
+            let _guard = lock.lock().await;
+            let pair = self.db.sync_pair(id)?;
+            if !pair.local_path.is_dir() {
+                return Err(CoreError::rule(
+                    "folder_unavailable",
+                    format!(
+                        "The folder {} isn't available right now.",
+                        pair.local_path.display()
+                    ),
+                )
+                .with("path", pair.local_path.display()));
+            }
+            let mut n = 0;
+            for p in &paths {
+                crate::recovery::restore(&pair.recovery_path, &pair.local_path, p)?;
+                n += 1;
+            }
+            n
+        };
+        self.nudge(id).await;
+        Ok(restored)
+    }
+
     /// Ask a pair's scheduler to sync soon.
     pub async fn nudge(&self, id: Uuid) {
         if let Some((_, tx)) = self.tasks.lock().await.get(&id) {
@@ -520,6 +554,9 @@ impl SyncManager {
             filters_file: Some(dirs.filters.to_string_lossy().into()),
             max_lock: "2m".into(),
             dry_run: false,
+            // `photo.conflict1.jpg`, not `photo.jpg.conflict1`, so the copy
+            // still opens in the right program.
+            config: Some(serde_json::json!({ "SuffixKeepExtension": true })),
         };
         let group = format!("sync-{}", pair.id);
         let job = self

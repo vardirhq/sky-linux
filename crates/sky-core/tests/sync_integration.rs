@@ -218,7 +218,7 @@ async fn conflicts_keep_both_versions() {
     assert_eq!(p.last_summary.unwrap().conflicts, 1);
     for side in [env.local.clone(), env.remote()] {
         assert_eq!(read(&side.join("plan.txt")), "edited on phone (newer)");
-        assert_eq!(read(&side.join("plan.txt.conflict1")), "edited on linux");
+        assert_eq!(read(&side.join("plan.conflict1.txt")), "edited on linux");
     }
     env.core.shutdown().await;
 }
@@ -413,5 +413,56 @@ async fn unsafe_pairs_are_refused() {
         ),
         "overlaps_sync_remote"
     );
+    env.core.shutdown().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn files_restored_from_the_recovery_folder_return_to_the_cloud() {
+    let env = need_rclone!();
+    write(&env.local.join("Docs/plan.txt"), "the plan");
+    write(&env.local.join("a.txt"), "a");
+    write(&env.local.join("b.txt"), "b");
+    let pair = env.pair(false).await;
+
+    // Deleted in the cloud by mistake → removed here, kept for recovery.
+    std::fs::remove_file(env.remote().join("Docs/plan.txt")).unwrap();
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert!(!env.local.join("Docs/plan.txt").exists());
+    let files = env.core.sync.recovery_files(pair.id).unwrap();
+    assert_eq!(
+        files.iter().map(|f| f.path.as_str()).collect::<Vec<_>>(),
+        ["Docs/plan.txt"]
+    );
+
+    // Restore over IPC, then the next sync uploads it again.
+    let n = sky_core::ipc::dispatch(
+        &env.core,
+        serde_json::from_value(json!({
+            "method": "sync.recovery.restore",
+            "params": { "id": pair.id, "paths": ["Docs/plan.txt"] }
+        }))
+        .unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(n, 1);
+    assert_eq!(read(&env.local.join("Docs/plan.txt")), "the plan");
+    assert!(env.core.sync.recovery_files(pair.id).unwrap().is_empty());
+    let p = env.sync(pair.id).await;
+    assert_eq!(p.state, SyncState::Idle, "{:?}", p.last_error);
+    assert_eq!(read(&env.remote().join("Docs/plan.txt")), "the plan");
+
+    // Escaping the recovery folder is refused.
+    let bad = sky_core::ipc::dispatch(
+        &env.core,
+        serde_json::from_value(json!({
+            "method": "sync.recovery.restore",
+            "params": { "id": pair.id, "paths": ["../../s/config/rclone.conf"] }
+        }))
+        .unwrap(),
+    )
+    .await;
+    assert!(bad.is_err());
     env.core.shutdown().await;
 }

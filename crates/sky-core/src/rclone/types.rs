@@ -129,6 +129,10 @@ pub struct BisyncOpts {
     pub filters_file: Option<String>,
     pub max_lock: String,
     pub dry_run: bool,
+    /// Global options for this call only (rclone's `_config`), e.g.
+    /// `{"SuffixKeepExtension": true}`.
+    #[serde(rename = "_config", skip_serializing_if = "Option::is_none")]
+    pub config: Option<serde_json::Value>,
 }
 
 /// `core/stats`.
