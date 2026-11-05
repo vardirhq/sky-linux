@@ -82,6 +82,63 @@ struct TokenResponse {
     token_type: Option<String>,
     #[serde(default)]
     expires_in: Option<i64>,
+    #[serde(default)]
+    id_token: Option<String>,
+}
+
+/// Who signed in, for the greeting and avatar. Display only.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Profile {
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
+impl Profile {
+    pub fn is_empty(&self) -> bool {
+        self.name.is_none() && self.email.is_none()
+    }
+}
+
+/// Name and e-mail from the claims of a JWT (an OpenID Connect `id_token`,
+/// or a Keycloak access token). The signature is not checked: the token
+/// came straight from the identity server over TLS, and the values are
+/// only shown to the user, never used to decide anything.
+pub fn profile_from_jwt(jwt: &str) -> Profile {
+    let claims = jwt
+        .split('.')
+        .nth(1)
+        .and_then(|p| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .decode(p.trim_end_matches('='))
+                .ok()
+        })
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .unwrap_or_default();
+    let text = |k: &str| {
+        claims
+            .get(k)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    };
+    let name = text("name").or_else(|| {
+        let full = [text("given_name"), text("family_name")]
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>()
+            .join(" ");
+        (!full.is_empty()).then_some(full)
+    });
+    let email = text("email").filter(|e| e.contains('@'));
+    Profile { name, email }
+}
+
+/// The result of a sign-in: rclone's token JSON and who signed in.
+#[derive(Debug, Clone)]
+pub struct SignedIn {
+    pub token: String,
+    pub profile: Profile,
 }
 
 /// A token in the JSON shape rclone stores (`golang.org/x/oauth2.Token`).
@@ -288,8 +345,8 @@ impl SignIn {
     }
 
     /// Wait for the browser, show our page, exchange the code. Returns the
-    /// token as rclone-compatible JSON.
-    pub async fn finish(self, lang: PageLanguage, provider_name: &str) -> Result<String> {
+    /// token as rclone-compatible JSON, and the user's name and e-mail.
+    pub async fn finish(self, lang: PageLanguage, provider_name: &str) -> Result<SignedIn> {
         let deadline = tokio::time::Instant::now() + SIGN_IN_TIMEOUT;
         loop {
             let (mut stream, _) = tokio::time::timeout_at(deadline, self.listener.accept())
@@ -330,7 +387,7 @@ impl SignIn {
         }
     }
 
-    async fn exchange(&self, code: &str) -> Result<String> {
+    async fn exchange(&self, code: &str) -> Result<SignedIn> {
         let resp = self
             .http
             .post(&self.endpoints.token_endpoint)
@@ -367,12 +424,23 @@ impl SignIn {
                 "The sign-in server didn't grant offline access.".into(),
             ));
         }
-        Ok(rclone_token_json(
-            &t.access_token,
-            t.refresh_token.as_deref(),
-            t.token_type.as_deref(),
-            t.expires_in,
-        ))
+        let mut profile = t
+            .id_token
+            .as_deref()
+            .map(profile_from_jwt)
+            .unwrap_or_default();
+        if profile.is_empty() {
+            profile = profile_from_jwt(&t.access_token);
+        }
+        Ok(SignedIn {
+            token: rclone_token_json(
+                &t.access_token,
+                t.refresh_token.as_deref(),
+                t.token_type.as_deref(),
+                t.expires_in,
+            ),
+            profile,
+        })
     }
 }
 
@@ -410,6 +478,31 @@ async fn respond(stream: &mut TcpStream, status: &str, body: &str) -> std::io::R
 
 #[cfg(test)]
 mod tests {
+    fn jwt(claims: serde_json::Value) -> String {
+        let enc = |v: &[u8]| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v);
+        format!(
+            "{}.{}.sig",
+            enc(br#"{"alg":"RS256"}"#),
+            enc(claims.to_string().as_bytes())
+        )
+    }
+
+    #[test]
+    fn profile_from_claims() {
+        let p = profile_from_jwt(&jwt(
+            serde_json::json!({ "name": "Kari Nordmann", "email": "kari@example.no" }),
+        ));
+        assert_eq!(p.name.as_deref(), Some("Kari Nordmann"));
+        assert_eq!(p.email.as_deref(), Some("kari@example.no"));
+        let p = profile_from_jwt(&jwt(
+            serde_json::json!({ "given_name": "Kari", "family_name": "Nordmann", "email": "nope" }),
+        ));
+        assert_eq!(p.name.as_deref(), Some("Kari Nordmann"));
+        assert_eq!(p.email, None, "not an e-mail address");
+        assert!(profile_from_jwt(&jwt(serde_json::json!({ "sub": "1" }))).is_empty());
+        assert!(profile_from_jwt("not a jwt").is_empty());
+    }
+
     use super::*;
 
     #[test]
