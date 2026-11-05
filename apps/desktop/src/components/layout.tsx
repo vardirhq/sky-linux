@@ -1,3 +1,4 @@
+import { EDITION } from "@/edition";
 import { useEffect, useRef } from "react";
 import {
   ArrowDown,
@@ -38,7 +39,7 @@ const NAV: { id: View; label: Key; icon: typeof Folder }[] = [
 ];
 
 export function SkyLogo({ className }: { className?: string }) {
-  return <img src="/sky.svg" alt="" className={cn("size-10", className)} />;
+  return <img src={EDITION.id === "telia" ? "/sky-telia.svg" : "/sky.svg"} alt="" className={cn("size-10", className)} />;
 }
 
 export function Sidebar() {
@@ -113,8 +114,8 @@ export function TopBar() {
       <div data-tauri-drag-region className="flex w-60 shrink-0 items-center gap-3">
         <SkyLogo />
         <div className="leading-tight">
-          <div className="text-lg font-bold tracking-tight">Sky Linux</div>
-          <div className="text-xs text-fg-muted">{t("app.tagline")}</div>
+          <div className="text-lg font-bold tracking-tight">{EDITION.appName}</div>
+          <div className="text-xs text-fg-muted">{t(EDITION.tagline)}</div>
         </div>
       </div>
       <label className="relative mx-auto flex w-full max-w-lg items-center">
@@ -144,7 +145,7 @@ export function TopBar() {
           onClick={() => setView("settings")}
           className="flex items-center gap-2.5 rounded-xl border border-border px-3 py-1.5 hover:bg-surface-muted"
         >
-          <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-sky-400 to-blue-600 text-xs font-semibold text-white">
+          <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-[var(--color-avatar-from)] to-[var(--color-avatar-to)] text-xs font-semibold text-white">
             {initials}
           </span>
           <span className="text-left leading-tight">

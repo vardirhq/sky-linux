@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:telia": "VITE_SKY_EDITION=telia vite",
+    "tauri:dev:telia": "VITE_SKY_EDITION=telia tauri dev --config src-tauri/editions/telia.conf.json",
+    "tauri:build:telia": "VITE_SKY_EDITION=telia tauri build --config src-tauri/editions/telia.conf.json"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.105.3",

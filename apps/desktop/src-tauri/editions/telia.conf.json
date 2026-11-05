@@ -1,0 +1,33 @@
+{
+  "productName": "Telia Sky",
+  "mainBinaryName": "sky-linux",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Telia Sky",
+        "width": 1360,
+        "height": 880,
+        "minWidth": 1024,
+        "minHeight": 680,
+        "dragDropEnabled": true,
+        "decorations": false,
+        "transparent": false
+      }
+    ]
+  },
+  "bundle": {
+    "linux": {
+      "deb": {
+        "conflicts": [
+          "sky-linux"
+        ]
+      },
+      "rpm": {
+        "conflicts": [
+          "sky-linux"
+        ]
+      }
+    }
+  }
+}
