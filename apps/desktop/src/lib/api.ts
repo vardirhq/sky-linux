@@ -145,7 +145,7 @@ export async function onEvent(cb: (e: SkyEvent) => void): Promise<() => void> {
 
 export async function pickFolders(title: string): Promise<string[]> {
   if (!isTauri()) {
-    const p = window.prompt(`${title}\n(demo mode: type a folder path)`, "/home/ola/Pictures");
+    const p = window.prompt(`${title}\n(demo mode: type a folder path)`, "/home/ola/Bilder");
     return p ? [p] : [];
   }
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -155,7 +155,7 @@ export async function pickFolders(title: string): Promise<string[]> {
 
 export async function pickFiles(title: string): Promise<string[]> {
   if (!isTauri()) {
-    const p = window.prompt(`${title}\n(demo mode: type a file path)`, "/home/ola/Desktop/report.pdf");
+    const p = window.prompt(`${title}\n(demo mode: type a file path)`, "/home/ola/Skrivebord/rapport.pdf");
     return p ? [p] : [];
   }
   const { open } = await import("@tauri-apps/plugin-dialog");
@@ -222,7 +222,7 @@ export async function picturesDir(): Promise<string | null> {
 export async function defaultDownloadDir(): Promise<string> {
   const saved = await api.getSetting<string>("downloadDir").catch(() => null);
   if (saved) return saved;
-  if (!isTauri()) return "/home/ola/Downloads";
+  if (!isTauri()) return "/home/ola/Nedlastinger";
   const { downloadDir } = await import("@tauri-apps/api/path");
   return downloadDir();
 }

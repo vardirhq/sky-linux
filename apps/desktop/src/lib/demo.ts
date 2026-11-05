@@ -58,12 +58,12 @@ const tree: Record<string, CloudEntry[]> = {
   ],
   Archive: [
     entry("Archive/Telia Sky", "folder", 48 * GB, ago(3)),
-    entry("Archive/Documents", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
-    entry("Archive/Family Backup", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
-    entry("Archive/Work", "folder", 310 * GB, "2025-01-22T17:40:00Z"),
-    entry("Archive/Holiday plan.pdf", "file", 3.7 * MB, "2025-01-20T10:03:00Z", "application/pdf"),
-    entry("Archive/Norway.jpg", "file", 8.9 * MB, "2025-01-21T18:55:00Z", "image/jpeg"),
-    entry("Archive/Budget 2025.xlsx", "file", 1.2 * MB, "2025-01-19T09:36:00Z",
+    entry("Archive/Dokumenter", "folder", 24.6 * GB, "2025-01-21T15:04:00Z"),
+    entry("Archive/Familie", "folder", 620 * GB, "2025-01-20T08:27:00Z"),
+    entry("Archive/Jobb", "folder", 310 * GB, "2025-01-22T17:40:00Z"),
+    entry("Archive/Ferieplan.pdf", "file", 3.7 * MB, "2025-01-20T10:03:00Z", "application/pdf"),
+    entry("Archive/Lofoten.jpg", "file", 8.9 * MB, "2025-01-21T18:55:00Z", "image/jpeg"),
+    entry("Archive/Budsjett 2026.xlsx", "file", 1.2 * MB, "2025-01-19T09:36:00Z",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
   ],
   Photos: [
@@ -71,10 +71,10 @@ const tree: Record<string, CloudEntry[]> = {
     entry("Photos/2025", "folder", 580 * GB, "2025-01-22T20:18:00Z"),
     entry("Photos/IMG_4827.jpg", "file", 28.4 * MB, ago(2), "image/jpeg"),
   ],
-  "Archive/Documents": [
-    entry("Archive/Documents/Project brief.pdf", "file", 12.1 * MB, ago(7), "application/pdf"),
-    entry("Archive/Documents/Tax 2024.pdf", "file", 2.2 * MB, "2025-01-10T11:00:00Z", "application/pdf"),
-    entry("Archive/Documents/Notes.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
+  "Archive/Dokumenter": [
+    entry("Archive/Dokumenter/Prosjektplan.pdf", "file", 12.1 * MB, ago(7), "application/pdf"),
+    entry("Archive/Dokumenter/Skattemelding 2025.pdf", "file", 2.2 * MB, "2025-01-10T11:00:00Z", "application/pdf"),
+    entry("Archive/Dokumenter/Notater.odt", "file", 0.4 * MB, "2025-01-18T08:00:00Z", "application/vnd.oasis.opendocument.text"),
   ],
   Shared: [],
   Sync: [],
@@ -104,9 +104,9 @@ function syncPair(p: Partial<SyncPair>): SyncPair {
 const syncPairs: SyncPair[] = [syncPair({ id: "00000000-0000-4000-8000-000000000201" })];
 
 const backups: BackupJob[] = [
-  { name: "Family Backup", local: "/home/ola/Family", remote: "Archive/Family Backup" },
-  { name: "Pictures", local: "/home/ola/Pictures", remote: "Archive/Pictures" },
-  { name: "Documents", local: "/home/ola/Documents", remote: "Archive/Documents" },
+  { name: "Familiebilder", local: "/home/ola/Familie", remote: "Archive/Familie" },
+  { name: "Bilder", local: "/home/ola/Bilder", remote: "Archive/Bilder" },
+  { name: "Dokumenter", local: "/home/ola/Dokumenter", remote: "Archive/Dokumenter" },
 ].map((b, i) => ({
   id: `00000000-0000-4000-8000-00000000010${i}`,
   accountId: account.id,
@@ -146,8 +146,8 @@ function transfer(p: Partial<Transfer>): Transfer {
 const transfers: Transfer[] = [
   transfer({
     direction: "upload",
-    source: "/home/ola/Pictures",
-    destination: "Archive/Pictures",
+    source: "/home/ola/Bilder",
+    destination: "Archive/Bilder",
     state: "running",
     bytesTotal: 15 * GB,
     bytesDone: 10.8 * GB,
@@ -157,11 +157,11 @@ const transfers: Transfer[] = [
     startedAt: ago(14),
     finishedAt: null,
   }),
-  transfer({ source: "/home/ola/Pictures/IMG_4827.jpg", destination: "Archive/Pictures/IMG_4827.jpg", bytesTotal: 28.4 * MB, bytesDone: 28.4 * MB, startedAt: ago(2), finishedAt: ago(2) }),
-  transfer({ direction: "download", source: "Archive/Documents/Project brief.pdf", destination: "/home/ola/Downloads/Project brief.pdf", bytesTotal: 12.1 * MB, bytesDone: 12.1 * MB, startedAt: ago(7), finishedAt: ago(7) }),
-  transfer({ source: "/home/ola/Work/slides.odp", destination: "Archive/Work/slides.odp", bytesTotal: 540 * MB, bytesDone: 540 * MB, startedAt: ago(40), finishedAt: ago(38) }),
-  transfer({ source: "/home/ola/Work/video.mp4", destination: "Archive/Work/video.mp4", bytesTotal: 520 * MB, bytesDone: 520 * MB, startedAt: ago(55), finishedAt: ago(50) }),
-  transfer({ direction: "download", source: "Photos/2024/summer.zip", destination: "/home/ola/Downloads/summer.zip", bytesTotal: 568 * MB, bytesDone: 568 * MB, startedAt: ago(80), finishedAt: ago(78) }),
+  transfer({ source: "/home/ola/Bilder/IMG_4827.jpg", destination: "Archive/Bilder/IMG_4827.jpg", bytesTotal: 28.4 * MB, bytesDone: 28.4 * MB, startedAt: ago(2), finishedAt: ago(2) }),
+  transfer({ direction: "download", source: "Archive/Dokumenter/Prosjektplan.pdf", destination: "/home/ola/Nedlastinger/Prosjektplan.pdf", bytesTotal: 12.1 * MB, bytesDone: 12.1 * MB, startedAt: ago(7), finishedAt: ago(7) }),
+  transfer({ source: "/home/ola/Jobb/presentasjon.odp", destination: "Archive/Jobb/presentasjon.odp", bytesTotal: 540 * MB, bytesDone: 540 * MB, startedAt: ago(40), finishedAt: ago(38) }),
+  transfer({ source: "/home/ola/Jobb/hyttetur.mp4", destination: "Archive/Jobb/hyttetur.mp4", bytesTotal: 520 * MB, bytesDone: 520 * MB, startedAt: ago(55), finishedAt: ago(50) }),
+  transfer({ direction: "download", source: "Photos/2024/sommer.zip", destination: "/home/ola/Nedlastinger/sommer.zip", bytesTotal: 568 * MB, bytesDone: 568 * MB, startedAt: ago(80), finishedAt: ago(78) }),
 ];
 
 const history: HistoryEntry[] = [
