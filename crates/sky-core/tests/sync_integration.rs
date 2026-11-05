@@ -218,7 +218,7 @@ async fn conflicts_keep_both_versions() {
     assert_eq!(p.last_summary.unwrap().conflicts, 1);
     for side in [env.local.clone(), env.remote()] {
         assert_eq!(read(&side.join("plan.txt")), "edited on phone (newer)");
-        assert_eq!(read(&side.join("plan.txt.conflict1")), "edited on linux");
+        assert_eq!(read(&side.join("plan.conflict1.txt")), "edited on linux");
     }
     env.core.shutdown().await;
 }

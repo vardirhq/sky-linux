@@ -12,7 +12,7 @@
 
 ## Next concrete tasks
 
-1. Conflict copies should keep the file extension (`photo.conflict1.jpg`, not `photo.jpg.conflict1`).
+1. A "restore from recovery folder" view for two-way sync.
 2. Fetch the user's name and email after sign-in (Jottacloud's user-info endpoint, or the `about` extras) for the greeting and avatar.
 3. Test notifications and start on login in a real desktop session (GNOME, KDE).
 4. Sign release packages.

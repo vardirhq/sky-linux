@@ -520,6 +520,9 @@ impl SyncManager {
             filters_file: Some(dirs.filters.to_string_lossy().into()),
             max_lock: "2m".into(),
             dry_run: false,
+            // `photo.conflict1.jpg`, not `photo.jpg.conflict1`, so the copy
+            // still opens in the right program.
+            config: Some(serde_json::json!({ "SuffixKeepExtension": true })),
         };
         let group = format!("sync-{}", pair.id);
         let job = self
