@@ -43,6 +43,13 @@ function entry(path: string, kind: "file" | "folder", size: number | null, modif
 // Laid out like a real Telia Sky account: one top-level folder per storage
 // area (see crates/sky-core/src/areas.rs).
 const tree: Record<string, CloudEntry[]> = {
+  "Archive/Telia Sky": [
+    entry("Archive/Telia Sky/Dokumenter", "folder", null, ago(30)),
+    entry("Archive/Telia Sky/Filmer", "folder", null, ago(60 * 24 * 40)),
+    entry("Archive/Telia Sky/Hytta", "folder", null, ago(60 * 24 * 6)),
+    entry("Archive/Telia Sky/Skole", "folder", null, ago(60 * 24 * 2)),
+    entry("Archive/Telia Sky/handleliste.txt", "file", 312, ago(90)),
+  ],
   "": [
     entry("Archive", "folder", null, ago(3)),
     entry("Photos", "folder", null, ago(2)),
@@ -89,6 +96,7 @@ function syncPair(p: Partial<SyncPair>): SyncPair {
     lastError: null,
     recoveryPath: "/home/ola/.local/share/sky-linux/sync/demo/recovery",
     createdAt: ago(60 * 24 * 14),
+    excluded: ["Filmer"],
     ...p,
   };
 }
@@ -418,6 +426,11 @@ export class DemoTransport implements Transport {
         const i = syncPairs.findIndex((x) => x.id === p.id);
         if (i >= 0) syncPairs.splice(i, 1);
         return null;
+      }
+      case "sync.setExcluded": {
+        const s = syncPairs.find((x) => x.id === p.id)!;
+        s.excluded = [...p.folders].sort();
+        return s;
       }
       case "sync.runNow":
       case "sync.resolve": {

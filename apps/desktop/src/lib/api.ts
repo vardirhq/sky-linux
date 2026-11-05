@@ -128,6 +128,7 @@ export const api = {
   deleteSync: (id: string) => call<void>("sync.delete", { id }),
   runSync: (id: string) => call<SyncPair>("sync.runNow", { id }),
   resolveSync: (id: string, action: ReviewAction) => call<SyncPair>("sync.resolve", { id, action }),
+  setSyncExcluded: (id: string, folders: string[]) => call<SyncPair>("sync.setExcluded", { id, folders }),
   recoveryFiles: (id: string) => call<RecoveredFile[]>("sync.recovery.list", { id }),
   restoreFiles: (id: string, paths: string[]) => call<number>("sync.recovery.restore", { id, paths }),
 

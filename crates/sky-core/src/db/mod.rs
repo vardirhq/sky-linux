@@ -268,6 +268,7 @@ impl Database {
             last_error: opt_json(r.get("last_error")?)?,
             recovery_path: r.get::<_, String>("recovery_path")?.into(),
             created_at: r.get("created_at")?,
+            excluded: from_json(&r.get::<_, String>("excluded")?)?,
         })
     }
 
@@ -277,17 +278,18 @@ impl Database {
         let error = p.last_error.as_ref().map(to_json).transpose()?;
         let local = p.local_path.to_string_lossy().to_string();
         let recovery = p.recovery_path.to_string_lossy().to_string();
+        let excluded = to_json(&p.excluded)?;
         self.with(|c| {
             c.execute(
                 "INSERT INTO sync_pairs(id, account_id, name, local_path, remote_path, enabled,
                     max_delete_percent, poll_minutes, state, last_sync, last_summary, last_error,
-                    recovery_path, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                    recovery_path, created_at, excluded)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
                  ON CONFLICT(id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
                     max_delete_percent = excluded.max_delete_percent,
                     poll_minutes = excluded.poll_minutes, state = excluded.state,
                     last_sync = excluded.last_sync, last_summary = excluded.last_summary,
-                    last_error = excluded.last_error",
+                    last_error = excluded.last_error, excluded = excluded.excluded",
                 params![
                     p.id,
                     p.account_id,
@@ -302,7 +304,8 @@ impl Database {
                     summary,
                     error,
                     recovery,
-                    p.created_at
+                    p.created_at,
+                    excluded
                 ],
             )?;
             Ok(())

@@ -234,6 +234,17 @@ export const en = {
     pause: "Pause {name}",
     remove: "Stop syncing",
     recovery: "Recovery folder",
+    folders: {
+      button: "Choose folders",
+      title: "Folders to sync in “{name}”",
+      hint: "Untick folders you don't need on this computer. They stay in the cloud and on your other devices.",
+      none: "This cloud folder has no subfolders yet. Files directly inside it are always synced.",
+      cloudOnly: "Only in the cloud",
+      note: "Files already on this computer in an unticked folder are left where they are; delete them yourself to free up space. Nothing is deleted in the cloud. Files directly in the synced folder are always synced.",
+      save: "Save",
+      saved: "Folder choice saved. Syncing…",
+      excludedN: "1 folder only in the cloud|{count} folders only in the cloud",
+    },
     recover: {
       title: "Recover files from “{name}”",
       hint: "Files that sync removed or replaced on this computer, for example because they were deleted on another device. Restored files go back to where they were and are synced to the cloud again. Nothing is overwritten.",

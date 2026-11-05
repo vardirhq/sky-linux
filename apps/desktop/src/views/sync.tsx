@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, FolderOpen, FolderPlus, LifeBuoy, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
+import { ArrowLeftRight, FolderCheck, FolderOpen, FolderPlus, LifeBuoy, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
 import { api, homeDir, openFolder, pickFolders } from "@/lib/api";
 import { keys, useAccounts, useAction, useHome, useSyncPairs } from "@/lib/hooks";
 import { PROVIDER_NAMES, type SyncPair } from "@/lib/types";
@@ -80,6 +80,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
   const t = useT();
   const [confirm, setConfirm] = useState(false);
   const [recovering, setRecovering] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const home = useHome().data;
   const account = useAccounts().data?.[0];
   const toggle = useAction((enabled: boolean) => api.setSyncEnabled(pair.id, enabled), [keys.sync]);
@@ -111,6 +112,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
             </span>
           )}
           {s && s.conflicts > 0 && <Badge tone="warning">{t("sync.conflicts", { count: s.conflicts })}</Badge>}
+          {pair.excluded.length > 0 && <Badge>{t("sync.folders.excludedN", { count: pair.excluded.length })}</Badge>}
         </div>
         {pair.state.kind === "error" && pair.lastError && (
           <p className="text-xs text-fg-muted">{localizeError(pair.lastError).message}</p>
@@ -122,6 +124,9 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
           <Button size="sm" variant="ghost" aria-label={t("sync.openFolder")} title={t("sync.openFolder")} onClick={() => openFolder(pair.localPath)}>
             <FolderOpen />
           </Button>
+          <Button size="sm" variant="ghost" onClick={() => setChoosing(true)}>
+            <FolderCheck /> {t("sync.folders.button")}
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setRecovering(true)}>
             <LifeBuoy /> {t("sync.recovery")}
           </Button>
@@ -130,6 +135,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
           </Button>
         </div>
       </CardContent>
+      {choosing && <FoldersDialog pair={pair} onClose={() => setChoosing(false)} />}
       {recovering && <RecoveryDialog pair={pair} onClose={() => setRecovering(false)} />}
       <Dialog
         open={confirm}
@@ -315,6 +321,68 @@ function RecoveryDialog({ pair, onClose }: { pair: SyncPair; onClose: () => void
           ))}
         </div>
       )}
+    </Dialog>
+  );
+}
+
+/** Selective sync: which folders of the cloud folder are kept on this computer. */
+function FoldersDialog({ pair, onClose }: { pair: SyncPair; onClose: () => void }) {
+  const t = useT();
+  const listing = useQuery({ queryKey: keys.list(pair.remotePath), queryFn: () => api.list(pair.remotePath) });
+  const [excluded, setExcluded] = useState<Set<string>>(new Set(pair.excluded));
+  const save = useAction((folders: string[]) => api.setSyncExcluded(pair.id, folders), [keys.sync], t("sync.folders.saved"));
+  // Top-level folders in the cloud, plus excluded ones that no longer exist.
+  const prefix = pair.remotePath.replace(/\/+$/, "") + "/";
+  const names = [
+    ...new Set([
+      ...(listing.data ?? []).filter((e) => e.kind === "folder").map((e) => e.path.replace(prefix, "")),
+      ...pair.excluded.filter((f) => !f.includes("/")),
+    ]),
+  ].sort((a, b) => a.localeCompare(b));
+  const nested = pair.excluded.filter((f) => f.includes("/"));
+  const changed = [...excluded].sort().join("\n") !== [...pair.excluded].sort().join("\n");
+  const toggle = (name: string) =>
+    setExcluded((s) => {
+      const next = new Set(s);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t("sync.folders.title", { name: pair.name })}
+      footer={
+        <>
+          <Button onClick={onClose}>{t("files.cancel")}</Button>
+          <Button
+            variant="primary"
+            disabled={!changed || save.isPending}
+            onClick={() => save.mutate([...excluded, ...nested.filter((n) => !excluded.has(n))], { onSuccess: onClose })}
+          >
+            {t("sync.folders.save")}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-3 text-fg-muted">{t("sync.folders.hint")}</p>
+      {listing.isLoading ? (
+        <p className="text-fg-muted">…</p>
+      ) : names.length === 0 ? (
+        <p className="rounded-lg bg-surface-muted px-3 py-4 text-center text-fg-muted">{t("sync.folders.none")}</p>
+      ) : (
+        <div className="max-h-72 overflow-auto rounded-lg border border-border">
+          {names.map((n) => (
+            <label key={n} className="flex items-center gap-3 border-b border-border px-3 py-2 last:border-0">
+              <input type="checkbox" checked={!excluded.has(n)} onChange={() => toggle(n)} />
+              <span className="min-w-0 flex-1 truncate">{n}</span>
+              {excluded.has(n) && <span className="shrink-0 text-xs text-fg-muted">{t("sync.folders.cloudOnly")}</span>}
+            </label>
+          ))}
+        </div>
+      )}
+      <p className="mt-3 text-xs text-fg-muted">{t("sync.folders.note")}</p>
     </Dialog>
   );
 }

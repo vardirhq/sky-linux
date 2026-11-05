@@ -164,6 +164,8 @@ export interface SyncPair {
   lastError: UserError | null;
   recoveryPath: string;
   createdAt: string;
+  /** Folders (relative to the pair) left out of sync. */
+  excluded: string[];
 }
 
 export interface Diagnostics {

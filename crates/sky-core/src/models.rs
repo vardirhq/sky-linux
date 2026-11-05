@@ -269,6 +269,10 @@ pub struct SyncPair {
     /// Local files removed or overwritten by sync are moved here.
     pub recovery_path: PathBuf,
     pub created_at: DateTime<Utc>,
+    /// Folders (relative to the pair, `/`-separated) left out of sync:
+    /// they stay in the cloud and are not downloaded (selective sync).
+    #[serde(default)]
+    pub excluded: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

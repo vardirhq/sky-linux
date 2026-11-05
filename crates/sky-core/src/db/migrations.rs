@@ -107,6 +107,10 @@ const MIGRATIONS: &[&str] = &[
     r#"
     ALTER TABLE accounts ADD COLUMN areas TEXT NOT NULL DEFAULT '[]';
     "#,
+    // 4: selective sync: folders left out of a sync pair.
+    r#"
+    ALTER TABLE sync_pairs ADD COLUMN excluded TEXT NOT NULL DEFAULT '[]';
+    "#,
 ];
 
 #[allow(dead_code)] // used by tests and diagnostics
