@@ -23,6 +23,7 @@ pub mod oauth;
 pub mod paths;
 pub mod provider;
 pub mod rclone;
+pub mod recovery;
 pub mod secrets;
 pub mod service;
 pub mod sync;

@@ -182,6 +182,11 @@ export class DemoTransport implements Transport {
   private listeners = new Set<(e: SkyEvent) => void>();
   private connected = true;
   private settings: Record<string, unknown> = { onboardingComplete: true };
+  private recovered: { path: string; size: number; modified: string }[] = [
+    { path: "Dokumenter/Budsjett 2026.xlsx", size: 48_213, modified: new Date(Date.now() - 2 * 3600e3).toISOString() },
+    { path: "Dokumenter/Kvittering strøm.pdf", size: 182_004, modified: new Date(Date.now() - 26 * 3600e3).toISOString() },
+    { path: "Hytta/plan.txt", size: 1_204, modified: new Date(Date.now() - 6 * 86400e3).toISOString() },
+  ];
 
   constructor() {
     if (typeof window !== "undefined") {
@@ -262,6 +267,14 @@ export class DemoTransport implements Transport {
           backupJobs: backups.length,
           syncPairs: syncPairs.length,
         };
+      case "sync.recovery.list":
+        return this.recovered;
+      case "sync.recovery.restore": {
+        const paths = new Set<string>(p.paths);
+        const before = this.recovered.length;
+        this.recovered = this.recovered.filter((f) => !paths.has(f.path));
+        return before - this.recovered.length;
+      }
       case "daemon.diagnostics":
         return {
           generatedAt: now(),

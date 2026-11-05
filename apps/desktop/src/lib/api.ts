@@ -13,6 +13,7 @@ import type {
   NewBackupJob,
   NewSyncPair,
   ReviewAction,
+  RecoveredFile,
   SyncPair,
   ProviderInfo,
   Provider,
@@ -127,6 +128,8 @@ export const api = {
   deleteSync: (id: string) => call<void>("sync.delete", { id }),
   runSync: (id: string) => call<SyncPair>("sync.runNow", { id }),
   resolveSync: (id: string, action: ReviewAction) => call<SyncPair>("sync.resolve", { id, action }),
+  recoveryFiles: (id: string) => call<RecoveredFile[]>("sync.recovery.list", { id }),
+  restoreFiles: (id: string, paths: string[]) => call<number>("sync.recovery.restore", { id, paths }),
 
   history: (limit = 100) => call<HistoryEntry[]>("history.list", { limit }),
   getSetting: <T>(key: string) => call<T | null>("settings.get", { key }),

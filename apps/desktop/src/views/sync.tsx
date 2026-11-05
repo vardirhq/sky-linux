@@ -1,9 +1,10 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftRight, FolderOpen, FolderPlus, LifeBuoy, RefreshCw, TriangleAlert, Unlink } from "lucide-react";
 import { api, homeDir, openFolder, pickFolders } from "@/lib/api";
 import { keys, useAccounts, useAction, useHome, useSyncPairs } from "@/lib/hooks";
 import { PROVIDER_NAMES, type SyncPair } from "@/lib/types";
-import { cn, tildePath, timeAgo } from "@/lib/utils";
+import { cn, formatBytes, tildePath, timeAgo } from "@/lib/utils";
 import { defaultRemote, displayPath } from "@/lib/areas";
 import { localizeError, useT } from "@/i18n";
 import { EmptyState } from "@/components/file-browser";
@@ -78,6 +79,7 @@ function ReviewPanel({ pair }: { pair: SyncPair }) {
 function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
   const t = useT();
   const [confirm, setConfirm] = useState(false);
+  const [recovering, setRecovering] = useState(false);
   const home = useHome().data;
   const account = useAccounts().data?.[0];
   const toggle = useAction((enabled: boolean) => api.setSyncEnabled(pair.id, enabled), [keys.sync]);
@@ -120,7 +122,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
           <Button size="sm" variant="ghost" aria-label={t("sync.openFolder")} title={t("sync.openFolder")} onClick={() => openFolder(pair.localPath)}>
             <FolderOpen />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => openFolder(pair.recoveryPath)}>
+          <Button size="sm" variant="ghost" onClick={() => setRecovering(true)}>
             <LifeBuoy /> {t("sync.recovery")}
           </Button>
           <Button size="sm" variant="ghost" className="ml-auto text-danger" onClick={() => setConfirm(true)}>
@@ -128,6 +130,7 @@ function PairCard({ pair, provider }: { pair: SyncPair; provider: string }) {
           </Button>
         </div>
       </CardContent>
+      {recovering && <RecoveryDialog pair={pair} onClose={() => setRecovering(false)} />}
       <Dialog
         open={confirm}
         onClose={() => setConfirm(false)}
@@ -244,5 +247,74 @@ export function SyncView() {
         <p className="mt-3 text-xs text-fg-muted">{t("sync.dialogHint")}</p>
       </Dialog>
     </div>
+  );
+}
+
+/** Files sync removed from this computer, and a way to put them back. */
+function RecoveryDialog({ pair, onClose }: { pair: SyncPair; onClose: () => void }) {
+  const t = useT();
+  const files = useQuery({ queryKey: ["recovery", pair.id], queryFn: () => api.recoveryFiles(pair.id) });
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const restore = useAction(
+    (paths: string[]) => api.restoreFiles(pair.id, paths),
+    [["recovery", pair.id], keys.sync],
+    t("sync.recover.restored", { count: selected.size }),
+  );
+  const list = files.data ?? [];
+  const all = list.length > 0 && selected.size === list.length;
+  const toggle = (path: string) =>
+    setSelected((s) => {
+      const next = new Set(s);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={t("sync.recover.title", { name: pair.name })}
+      footer={
+        <>
+          <Button variant="ghost" className="mr-auto" onClick={() => openFolder(pair.recoveryPath)}>
+            <FolderOpen /> {t("sync.openFolder")}
+          </Button>
+          <Button onClick={onClose}>{t("sync.recover.close")}</Button>
+          <Button
+            variant="primary"
+            disabled={selected.size === 0 || restore.isPending}
+            onClick={() => restore.mutate([...selected], { onSuccess: () => setSelected(new Set()) })}
+          >
+            <LifeBuoy /> {selected.size ? t("sync.recover.restoreN", { count: selected.size }) : t("sync.recover.restore")}
+          </Button>
+        </>
+      }
+    >
+      <p className="mb-3 text-fg-muted">{t("sync.recover.hint")}</p>
+      {files.isLoading ? (
+        <p className="text-fg-muted">…</p>
+      ) : list.length === 0 ? (
+        <p className="rounded-lg bg-surface-muted px-3 py-4 text-center text-fg-muted">{t("sync.recover.empty")}</p>
+      ) : (
+        <div className="max-h-72 overflow-auto rounded-lg border border-border">
+          <label className="flex items-center gap-3 border-b border-border bg-surface-muted px-3 py-2 font-medium">
+            <input
+              type="checkbox"
+              checked={all}
+              onChange={() => setSelected(all ? new Set() : new Set(list.map((f) => f.path)))}
+            />
+            {t("sync.recover.selectAll", { count: list.length })}
+          </label>
+          {list.map((f) => (
+            <label key={f.path} className="flex items-center gap-3 border-b border-border px-3 py-2 last:border-0">
+              <input type="checkbox" checked={selected.has(f.path)} onChange={() => toggle(f.path)} />
+              <span className="min-w-0 flex-1 truncate" title={f.path}>{f.path}</span>
+              <span className="shrink-0 tabular-nums text-fg-muted">{formatBytes(f.size)}</span>
+              {f.modified && <span className="hidden shrink-0 text-fg-muted sm:inline">{timeAgo(f.modified)}</span>}
+            </label>
+          ))}
+        </div>
+      )}
+    </Dialog>
   );
 }

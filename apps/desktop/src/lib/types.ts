@@ -174,6 +174,13 @@ export interface Diagnostics {
   report: string;
 }
 
+export interface RecoveredFile {
+  /** Relative to the synced folder, with / separators. */
+  path: string;
+  size: number;
+  modified: string | null;
+}
+
 export interface NewSyncPair {
   accountId: string;
   name?: string | null;

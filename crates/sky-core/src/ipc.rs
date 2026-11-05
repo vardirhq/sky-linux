@@ -131,6 +131,10 @@ pub enum Request {
         id: Uuid,
         action: crate::sync::ReviewAction,
     },
+    #[serde(rename = "sync.recovery.list")]
+    RecoveryFiles { id: Uuid },
+    #[serde(rename = "sync.recovery.restore")]
+    RestoreFiles { id: Uuid, paths: Vec<String> },
     #[serde(rename = "history.list")]
     History {
         #[serde(default = "default_limit")]
@@ -245,6 +249,8 @@ pub async fn dispatch(core: &SkyCore, req: Request) -> Result<Value> {
         Request::DeleteSync { id } => v(core.sync.delete(id).await?)?,
         Request::RunSync { id } => v(core.sync.run_now(id).await?)?,
         Request::ResolveSync { id, action } => v(core.sync.resolve(id, action).await?)?,
+        Request::RecoveryFiles { id } => v(core.sync.recovery_files(id)?)?,
+        Request::RestoreFiles { id, paths } => v(core.sync.restore(id, paths).await?)?,
         Request::History { limit } => v(core.history(limit.min(1000))?)?,
         Request::Diagnostics => v(core.diagnostics().await?)?,
         Request::GetSetting { key } => {
